@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GameHub — Server Status</title>
+<link rel="stylesheet" href="/static/styles.css" />
+<style>
+.wrap{max-width:640px;margin:40px auto;padding:0 16px}
+.addr{display:flex;gap:8px;margin:12px 0}.addr code{flex:1;font-size:1.05em;padding:10px}
+.pill{display:inline-block;padding:3px 12px;border-radius:20px;font-weight:700}
+.pill.on{background:#123f2c;color:#3ecf8e}.pill.off{background:#4a1518;color:#ff6b6b}
+#players li{margin:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <p class="muted small">🎮 GameHub shared status <span id="auto" class="muted small">· auto-refresh 10s</span></p>
+    <h1 id="name">…</h1>
+    <p><span id="state" class="pill off">…</span> <span id="game" class="muted"></span></p>
+    <h3>Join address</h3>
+    <div class="addr"><code id="addr">…</code><button id="copy" class="primary">Copy</button></div>
+    <p id="noaddr" class="muted small hidden">No public address set yet — ask the owner to add the playit address in GameHub.</p>
+    <div class="statcards" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="stat"><label>CPU %</label><b id="cpu">—</b></div>
+      <div class="stat"><label>RAM MB</label><b id="mem">—</b></div>
+      <div class="stat"><label>Players</label><b id="pcount">—</b></div>
+    </div>
+    <h3>Players online</h3>
+    <ul id="players" class="small"></ul>
+    <p id="err" class="error"></p>
+  </div>
+</div>
+<script>
+const id = location.pathname.split("/").pop();
+async function load() {
+  try {
+    const r = await fetch(`/public/servers/${id}`);
+    if (!r.ok) throw new Error("Server not found");
+    const j = await r.json();
+    document.getElementById("name").textContent = j.name + " (" + j.game_name + ")";
+    const st = document.getElementById("state");
+    st.textContent = j.running ? "● ONLINE" : "○ " + j.state.toUpperCase();
+    st.className = "pill " + (j.running ? "on" : "off");
+    document.getElementById("game").textContent = "";
+    document.getElementById("addr").textContent = j.public_address || "(not set)";
+    document.getElementById("noaddr").classList.toggle("hidden", !!j.public_address);
+    document.getElementById("cpu").textContent = j.cpu_percent ?? "?";
+    document.getElementById("mem").textContent = j.mem_mb ?? "?";
+    document.getElementById("pcount").textContent = j.players_online ?? (j.players?.length ?? "?");
+    document.getElementById("players").innerHTML =
+      (j.players || []).map(p => `<li>${p.name}</li>`).join("") || "<li class='muted'>No players online</li>";
+  } catch (e) { document.getElementById("err").textContent = String(e.message); }
+}
+document.getElementById("copy").onclick = () => {
+  const t = document.getElementById("addr").textContent;
+  navigator.clipboard?.writeText(t);
+};
+load(); setInterval(load, 10000);
+</script>
+</body>
+</html>

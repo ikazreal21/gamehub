@@ -61,6 +61,7 @@ def list_servers(_=Depends(auth.require_auth)):
             "image": inst.image, "state": st,
             "ports": inst.ports, "env_keys": sorted(inst.env.keys()),
             "created_at": inst.created_at,
+            "public_address": inst.public_address,
         })
     return result
 
@@ -100,7 +101,56 @@ def get_server(server_id: str, _=Depends(auth.require_auth)):
         raise HTTPException(404, "Server not found")
     st = docker_service.container_state(server_id)
     stats = docker_service.stats(server_id)
-    return {**inst.to_dict(), "state": st, "stats": stats}
+    d = {**inst.to_dict(), "state": st, "stats": stats}
+    d["share_url"] = f"/share/{server_id}"
+    return d
+
+
+@app.put("/api/servers/{server_id}/public-address")
+def api_set_public_address(server_id: str, body: dict, _=Depends(auth.require_auth)):
+    """Set the public join address (e.g. playit address). Body: {"public_address": "..."}"""
+    inst = docker_service.get_instance(server_id)
+    if not inst:
+        raise HTTPException(404, "Server not found")
+    addr = str(body.get("public_address", "")).strip()[:200]
+    inst.public_address = addr
+    docker_service._instances[server_id] = inst
+    docker_service._save()
+    return {"public_address": addr, "share_url": f"/share/{server_id}"}
+
+
+@app.get("/public/servers/{server_id}")
+def public_server_status(server_id: str):
+    """Public share endpoint - NO auth. Only safe fields: status, address, stats, player names."""
+    inst = docker_service.get_instance(server_id)
+    if not inst:
+        raise HTTPException(404, "Server not found")
+    tpl = get_template(inst.game)
+    state = docker_service.container_state(server_id)
+    stats = docker_service.stats(server_id)
+    players: list[dict] = []
+    players_online: int | None = None
+    try:
+        if tpl and tpl.rcon_supported and tpl.player_list_command:
+            raw = rcon_helpers.exec_rcon(server_id, tpl.player_list_command)
+            parsed = rcon_helpers.parse_players(inst.game, raw)
+            # only expose names publicly, never steam ids/uids
+            players = [{"name": p.get("name", "?")} for p in parsed]
+            players_online = len(players)
+    except Exception:
+        pass
+    return {
+        "name": inst.name,
+        "game": inst.game,
+        "game_name": tpl.name if tpl else inst.game,
+        "state": state,
+        "running": state == "running",
+        "public_address": inst.public_address,
+        "cpu_percent": stats.get("cpu_percent"),
+        "mem_mb": stats.get("mem_mb"),
+        "players_online": players_online if players_online is not None else stats.get("players_online"),
+        "players": players,
+    }
 
 
 @app.delete("/api/servers/{server_id}")
@@ -354,3 +404,7 @@ if STATIC_DIR.exists():
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(str(STATIC_DIR / "index.html"))
+
+    @app.get("/share/{server_id}", include_in_schema=False)
+    def share_page(server_id: str):
+        return FileResponse(str(STATIC_DIR / "share.html"))

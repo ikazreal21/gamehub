@@ -283,13 +283,27 @@ $("pal-save").onclick = async () => {
   alert("Saved. Restart server to apply."); loadConfig();
 };
 
-// env
+// env + public address / share link
 async function loadEnv() {
   if (!current) return;
   const j = await api.req(`/api/servers/${current}/env`);
   $("env-editor").value = JSON.stringify(j.env, null, 2);
   $("ports-view").textContent = JSON.stringify(j.ports, null, 2);
+  try {
+    const d = await api.req(`/api/servers/${current}`);
+    $("public-addr").value = d.public_address || "";
+    const url = `${location.origin}/share/${current}`;
+    const a = $("share-link"); a.href = url; a.textContent = url;
+  } catch {}
 }
+$("public-save").onclick = async () => {
+  if (!current) return;
+  const j = await api.req(`/api/servers/${current}/public-address`, { method: "PUT", body: JSON.stringify({ public_address: $("public-addr").value.trim() }) });
+  const url = `${location.origin}/share/${current}`;
+  const a = $("share-link"); a.href = url; a.textContent = url;
+  alert("Saved. Share link: " + url);
+};
+$("share-copy").onclick = () => { navigator.clipboard?.writeText($("share-link").href); };
 $("env-save").onclick = async () => {
   const env = JSON.parse($("env-editor").value);
   await api.req(`/api/servers/${current}/env`, { method: "PUT", body: JSON.stringify({ env }) });
