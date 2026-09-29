@@ -1,0 +1,289 @@
+/* GameHub frontend - vanilla JS SPA */
+const $ = (id) => document.getElementById(id);
+const api = {
+  token: localStorage.getItem("gh_token") || "",
+  async req(path, opts = {}) {
+    const r = await fetch(path, {
+      ...opts,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + this.token, ...(opts.headers || {}) },
+    });
+    if (r.status === 401) { this.logout(); throw new Error("unauthorized"); }
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch { j = { raw: t }; }
+    if (!r.ok) throw new Error(j.detail || t.slice(0, 300));
+    return j;
+  },
+  logout() { this.token = ""; localStorage.removeItem("gh_token"); location.reload(); },
+};
+
+let servers = [], templates = [], current = null, ws = null, hist = { cpu: [], mem: [] };
+
+// login
+$("login-btn").onclick = async () => {
+  $("login-err").textContent = "";
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("login-user").value, password: $("login-pass").value }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || "login failed");
+    api.token = j.access_token; localStorage.setItem("gh_token", api.token);
+    boot();
+  } catch (e) { $("login-err").textContent = String(e.message || e); }
+};
+$("logout").onclick = () => api.logout();
+
+async function boot() {
+  if (!api.token) return;
+  $("login-view").classList.add("hidden"); $("app").classList.remove("hidden");
+  await Promise.all([loadTemplates(), loadServers(), loadSystem()]);
+  setInterval(loadSystem, 15000);
+  setInterval(() => { if (current) refreshStats(); }, 5000);
+}
+
+async function loadTemplates() {
+  templates = await api.req("/api/templates");
+  $("template-box").innerHTML = templates.map(t => `• <b>${t.name}</b> <span class="muted">${t.id}</span>`).join("<br>");
+  $("ns-template").innerHTML = templates.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+  updateNsDesc();
+}
+function updateNsDesc() {
+  const t = templates.find(x => x.id === $("ns-template").value);
+  if (t) { $("ns-desc").textContent = t.description + " | image: " + (t.image || "(you supply)"); $("ns-image").placeholder = t.image || "e.g. nginx:latest"; }
+}
+$("ns-template").onchange = updateNsDesc;
+
+async function loadServers() {
+  servers = await api.req("/api/servers");
+  const box = $("server-list"); box.innerHTML = "";
+  servers.forEach(s => {
+    const b = document.createElement("button");
+    b.className = "srv" + (current === s.id ? " active" : "");
+    b.innerHTML = `<b>${s.name}</b><span class="muted small">${s.game_name}</span><br><span class="st ${s.state}">${s.state}</span>`;
+    b.onclick = () => selectServer(s.id);
+    box.appendChild(b);
+  });
+  if (current) { const s = servers.find(x => x.id === current); if (s) paintHead(s); }
+}
+
+async function loadSystem() {
+  try {
+    const s = await api.req("/api/system");
+    $("system-box").innerHTML = `CPU ${s.cpu_percent}%<br>RAM ${s.mem_used_mb}/${s.mem_total_mb} MB (${s.mem_percent}%)`;
+  } catch {}
+}
+
+function paintHead(s) {
+  $("empty-state").classList.add("hidden"); $("detail").classList.remove("hidden");
+  $("d-name").textContent = `${s.name}`;
+  $("d-meta").textContent = ` ${s.game_name} · ${s.image} · ${s.state}`;
+}
+
+async function selectServer(id) {
+  current = id;
+  await loadServers();
+  closeWs();
+  hist = { cpu: [], mem: [] };
+  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfig(), loadEnv(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
+  openWs();
+}
+
+document.querySelectorAll("#detail-head [data-act]").forEach(b => b.onclick = async () => {
+  if (!current) return;
+  const act = b.dataset.act;
+  if (act === "delete" && !confirm("Delete server container? (volumes kept unless you remove them manually)")) return;
+  try {
+    if (act === "delete") { await api.req(`/api/servers/${current}`, { method: "DELETE" }); current = null; $("detail").classList.add("hidden"); $("empty-state").classList.remove("hidden"); }
+    else await api.req(`/api/servers/${current}/${act}`, { method: "POST" });
+    await loadServers(); if (current) await refreshStats();
+  } catch (e) { alert(e.message); }
+});
+
+async function refreshStats() {
+  if (!current) return;
+  try {
+    const s = await api.req(`/api/servers/${current}/stats`);
+    $("s-state").textContent = s.state || "?";
+    $("s-cpu").textContent = (s.cpu_percent ?? "?") + " %";
+    $("s-mem").textContent = (s.mem_mb ?? "?") + " MB";
+    $("s-players").textContent = s.players_online ?? "?";
+    hist.cpu.push(s.cpu_percent || 0); hist.mem.push(s.mem_mb || 0);
+    if (hist.cpu.length > 60) { hist.cpu.shift(); hist.mem.shift(); }
+    drawChart();
+  } catch {}
+}
+
+function drawChart() {
+  const c = $("metric-chart"), ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  const series = [hist.cpu, hist.mem.map(v => v / 10)];
+  const colors = ["#5aa2ff", "#3ecf8e"];
+  series.forEach((arr, si) => {
+    ctx.strokeStyle = colors[si]; ctx.beginPath();
+    const max = Math.max(10, ...arr);
+    arr.forEach((v, i) => {
+      const x = (i / Math.max(1, 59)) * c.width, y = c.height - (v / max) * (c.height - 6) - 3;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+// tabs
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
+  $("tab-" + b.dataset.tab).classList.remove("hidden");
+});
+
+// console
+async function loadLogs() {
+  if (!current) return;
+  const j = await api.req(`/api/servers/${current}/logs?tail=300`);
+  $("logs").textContent = j.logs || "";
+  $("logs").scrollTop = 1e9;
+}
+$("logs-refresh").onclick = loadLogs;
+$("cmd-send").onclick = async () => {
+  const cmd = $("cmd-input").value.trim(); if (!cmd || !current) return;
+  $("cmd-out").textContent = "…";
+  try {
+    const j = await api.req(`/api/servers/${current}/rcon`, { method: "POST", body: JSON.stringify({ command: cmd }) });
+    $("cmd-out").textContent = j.output || "(empty response)";
+    $("cmd-input").value = "";
+  } catch (e) { $("cmd-out").textContent = "ERROR: " + e.message; }
+};
+async function loadQuickCmds() {
+  const t = templates.find(x => x.id === (servers.find(s => s.id === current) || {}).game);
+  $("quick-cmds").innerHTML = "";
+  (t?.helpful_commands || []).forEach(c => {
+    const b = document.createElement("button"); b.textContent = c; b.className = "mini";
+    b.onclick = () => { $("cmd-input").value = c.replace(/<.*>/, "").trim(); };
+    $("quick-cmds").appendChild(b);
+  });
+}
+function openWs() {
+  closeWs();
+  if (!$("logs-live").checked || !current) return;
+  try {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/api/servers/${current}/logs/ws?token=${api.token}`);
+    ws.onmessage = (e) => { $("logs").textContent += e.data; $("logs").scrollTop = 1e9; };
+  } catch {}
+}
+function closeWs() { try { ws?.close(); } catch {} ws = null; }
+$("logs-live").onchange = () => { closeWs(); if ($("logs-live").checked) openWs(); };
+
+// players
+async function loadPlayers() {
+  if (!current) return;
+  try {
+    const j = await api.req(`/api/servers/${current}/players`);
+    const tb = $("players-table tbody"); tb.innerHTML = "";
+    (j.players || []).forEach(p => {
+      const tr = document.createElement("tr");
+      const detail = p.steam_id || p.uid || "";
+      tr.innerHTML = `<td>${p.name}</td><td class="muted">${detail}</td><td></td>`;
+      const td = tr.lastChild;
+      [["Kick", "mini"], ["Ban", "mini"]].forEach(([label]) => {
+        const b = document.createElement("button"); b.textContent = label; b.className = "mini";
+        b.onclick = async () => {
+          const game = (servers.find(s => s.id === current) || {}).game;
+          let cmd = `${label === "Kick" ? "kick" : "ban"} ${p.name}`;
+          if (game === "palworld") cmd = `${label === "Kick" ? "KickPlayer" : "BanPlayer"} ${p.steam_id || p.uid || p.name}`;
+          if (!confirm(`Run: ${cmd}?`)) return;
+          await api.req(`/api/servers/${current}/rcon`, { method: "POST", body: JSON.stringify({ command: cmd }) });
+          loadPlayers();
+        };
+        td.appendChild(b);
+      });
+      tb.appendChild(tr);
+    });
+    $("players-raw").textContent = j.raw || "";
+  } catch (e) { $("players-raw").textContent = "ERROR: " + e.message; }
+}
+$("players-refresh").onclick = loadPlayers;
+
+// config
+async function loadConfig() {
+  if (!current) return;
+  try {
+    const j = await api.req(`/api/servers/${current}/config`);
+    $("config-editor").value = j.content || ""; $("config-path").textContent = "Path: " + j.path + (j.exists ? "" : " (not created yet — defaults shown)");
+  } catch (e) { $("config-editor").value = "ERROR: " + e.message; }
+}
+$("config-load").onclick = loadConfig;
+$("config-save").onclick = async () => {
+  await api.req(`/api/servers/${current}/config`, { method: "PUT", body: JSON.stringify({ content: $("config-editor").value }) });
+  alert("Saved. Restart server to apply.");
+};
+
+// palworld form
+async function loadPalSettings() {
+  if (!current) return;
+  const srv = servers.find(s => s.id === current);
+  if (!srv || srv.game !== "palworld") { $("pal-form").innerHTML = "<p class='muted'>Select a Palworld server.</p>"; return; }
+  const j = await api.req(`/api/servers/${current}/palworld-settings`);
+  const f = $("pal-form"); f.innerHTML = "";
+  Object.entries(j.settings).forEach(([k, v]) => {
+    const l = document.createElement("label"); l.textContent = k;
+    const i = document.createElement("input"); i.value = v; i.dataset.key = k;
+    l.appendChild(i); f.appendChild(l);
+  });
+}
+$("pal-load").onclick = loadPalSettings;
+$("pal-save").onclick = async () => {
+  const settings = {};
+  $("pal-form").querySelectorAll("input").forEach(i => settings[i.dataset.key] = i.value);
+  await api.req(`/api/servers/${current}/palworld-settings`, { method: "PUT", body: JSON.stringify({ settings }) });
+  alert("Saved. Restart server to apply."); loadConfig();
+};
+
+// env
+async function loadEnv() {
+  if (!current) return;
+  const j = await api.req(`/api/servers/${current}/env`);
+  $("env-editor").value = JSON.stringify(j.env, null, 2);
+  $("ports-view").textContent = JSON.stringify(j.ports, null, 2);
+}
+$("env-save").onclick = async () => {
+  const env = JSON.parse($("env-editor").value);
+  await api.req(`/api/servers/${current}/env`, { method: "PUT", body: JSON.stringify({ env }) });
+  alert("Saved. Use Update/Restart to apply.");
+};
+
+// backups
+async function loadBackups() {
+  if (!current) return;
+  const j = await api.req(`/api/backups?server=${current}`);
+  const tb = $("backup-table tbody"); tb.innerHTML = "";
+  j.forEach(b => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${b.filename}</td><td>${(b.size_bytes / 1024).toFixed(1)} KB</td><td>${b.created}</td><td></td>`;
+    const del = document.createElement("button"); del.textContent = "Delete"; del.className = "mini";
+    del.onclick = async () => { if (confirm("Delete backup?")) { await api.req(`/api/backups/${b.filename}`, { method: "DELETE" }); loadBackups(); } };
+    tr.lastChild.appendChild(del); tb.appendChild(tr);
+  });
+}
+$("backup-now").onclick = async () => { await api.req(`/api/servers/${current}/backup`, { method: "POST" }); loadBackups(); };
+$("backup-refresh").onclick = loadBackups;
+
+// new server modal
+$("add-server-btn").onclick = () => { $("modal").classList.remove("hidden"); $("ns-err").textContent = ""; };
+$("ns-cancel").onclick = () => $("modal").classList.add("hidden");
+$("ns-create").onclick = async () => {
+  $("ns-err").textContent = "";
+  try {
+    let env = {};
+    if ($("ns-env").value.trim()) env = JSON.parse($("ns-env").value);
+    await api.req("/api/servers", { method: "POST", body: JSON.stringify({
+      name: $("ns-name").value.trim(), game: $("ns-template").value,
+      image: $("ns-image").value.trim() || null, rcon_password: $("ns-rcon").value || null, env,
+    }) });
+    $("modal").classList.add("hidden");
+    $("ns-name").value = ""; $("ns-rcon").value = "";
+    await loadServers();
+  } catch (e) { $("ns-err").textContent = e.message; }
+};
+
+if (api.token) boot();

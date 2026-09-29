@@ -1,0 +1,56 @@
+# GameHub - self-hosted game server manager
+# QUICK: ./setup-server.sh --admin-pass 'your-strong-pass' --with-playit
+# MANUAL:
+# 1. cp .env.example .env  -> edit passwords!
+# 2. docker compose up -d --build
+# 3. open http://<server-ip>:8000  (login admin / your ADMIN_PASS)
+# CGNAT (PH ISPs): router port-forward won't work. Use playit agent
+# (installed by setup-server.sh --with-playit) and tunnel 127.0.0.1:8211 + :27015.
+services:
+  manager:
+    build: ./manager
+    container_name: gamehub-manager
+    restart: unless-stopped
+    ports:
+      - "${MANAGER_PORT:-8000}:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # lets manager start/stop game containers
+      - ./data:/data
+      - ./backups:/backups
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      BACKUP_DIR: /backups
+      INSTANCES_FILE: /data/instances.json
+
+  # Example Palworld server (also creatable from UI - this is just a pre-seed).
+  # Comment out if you prefer creating everything from the UI.
+  # palworld-1:
+  #   image: thijsvanloef/palworld-server-docker:latest
+  #   container_name: gamehub-palworld-1
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8211:8211/udp"
+  #     - "27015:27015/udp"
+  #     - "25575:25575"
+  #   volumes:
+  #     - palworld-1-data:/palworld
+  #   env_file: .env
+
+# volumes:
+#   palworld-1-data:
+
+  # --- Optional: playit.gg agent in Docker (for CGNAT) ---
+  # Host-binary install (via setup-server.sh --with-playit) is recommended
+  # because it can reach 127.0.0.1 mapped game ports with zero network config.
+  # Use this only if you prefer everything in Docker. Get SECRET at playit.gg
+  # dashboard -> Agents -> New Docker agent, put it in .env as PLAYIT_SECRET,
+  # then: docker compose --profile playit up -d
+  # playit:
+  #   image: ghcr.io/playit-cloud/playit-agent:0.15
+  #   container_name: gamehub-playit
+  #   restart: unless-stopped
+  #   environment:
+  #     SECRET_KEY: ${PLAYIT_SECRET:-}
+  #   network_mode: host
+  #   profiles: ["playit"]

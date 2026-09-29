@@ -1,0 +1,33 @@
+# secrets / local runtime (keep .env.example, ignore real .env)
+.env
+*.env.local
+
+# GameHub runtime data - volumes, instances, backups
+data/
+backups/
+*.tar.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Docker
+.docker/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# temp
+/tmp/
+*.log
