@@ -13,6 +13,10 @@ ADMIN_PASS = os.getenv("ADMIN_PASS", "changeme")
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-in-production")
 TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_MINUTES", "720"))
 
+# Comma-separated IPs/CIDRs allowed to reach /admin + management API.
+# Empty = no IP restriction (login still required). Localhost always allowed.
+ADMIN_ALLOWED_IPS = os.getenv("ADMIN_ALLOWED_IPS", "")
+
 # Docker host - defaults to socket. Manager container mounts /var/run/docker.sock
 DOCKER_HOST = os.getenv("DOCKER_HOST", "unix:///var/run/docker.sock")
 

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GameHub Admin — Game Server Manager</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=2" />
+<link rel="stylesheet" href="/static/styles.css?v=2" />
+</head>
+<body>
+<div id="login-view" class="center">
+  <div class="card login-card">
+    <h1>🎮 GameHub</h1>
+    <p class="muted">Self-hosted game server manager</p>
+    <input id="login-user" placeholder="Username" value="admin" autocomplete="username" />
+    <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+    <button id="login-btn" class="primary">Login</button>
+    <p id="login-err" class="error"></p>
+    <p class="muted small">Default: admin / changeme — change ADMIN_PASS in .env!</p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="brand">🎮 GameHub <button id="logout" title="Logout">⏻</button></div>
+    <div class="side-label">SERVERS <button id="add-server-btn" class="mini">+ New</button></div>
+    <div id="server-list"></div>
+    <div class="side-label">SYSTEM</div>
+    <div id="system-box" class="muted small">…</div>
+    <div class="side-label">TEMPLATES</div>
+    <div id="template-box" class="muted small"></div>
+  </aside>
+  <main>
+    <div id="empty-state" class="card">
+      <h2>No server selected</h2>
+      <p>Create one with <b>+ New</b> — pick Palworld, Minecraft, Valheim, Zomboid or Generic.</p>
+      <div id="howto">
+        <h3>How adding games works</h3>
+        <ol>
+          <li>Choose a template (each = a Docker image + ports + env defaults).</li>
+          <li>To add a <b>new game</b>: edit <code>manager/app/games/templates.py</code> — copy a block, set image/ports/env, restart. It appears here automatically. Generic template needs no code: just paste any image.</li>
+        </ol>
+      </div>
+    </div>
+    <div id="detail" class="hidden">
+      <header id="detail-head">
+        <div><h2 id="d-name">—</h2><span id="d-meta" class="muted"></span></div>
+        <div class="btnrow">
+          <button data-act="start" class="ok">▶ Start</button>
+          <button data-act="stop" class="warn">⏹ Stop</button>
+          <button data-act="restart">↻ Restart</button>
+          <button data-act="update" title="Pull latest image + recreate (game update)">⬆ Update</button>
+          <button data-act="delete" class="danger">🗑 Delete</button>
+        </div>
+      </header>
+      <div class="statcards">
+        <div class="stat"><label>Status</label><b id="s-state">—</b></div>
+        <div class="stat"><label>CPU %</label><b id="s-cpu">—</b></div>
+        <div class="stat"><label>RAM MB</label><b id="s-mem">—</b></div>
+        <div class="stat"><label>Players</label><b id="s-players">—</b></div>
+      </div>
+      <div class="chart-legend small"><span class="dot" style="background:#5aa2ff"></span> CPU % <span class="dot" style="background:#3ecf8e;margin-left:12px"></span> RAM (MB ÷ 10, scaled to fit)</div>
+      <canvas id="metric-chart" width="600" height="80"></canvas>
+      <nav class="tabs">
+        <button data-tab="console" class="active">Console</button>
+        <button data-tab="players">Players</button>
+        <button data-tab="config">Config</button>
+        <button data-tab="palworld">Palworld⚙</button>
+        <button data-tab="env">Env / Ports</button>
+        <button data-tab="mods">Mods</button>
+        <button data-tab="backups">Backups</button>
+      </nav>
+      <section id="tab-console" class="tab">
+        <div id="quick-cmds" class="btnrow"></div>
+        <pre id="logs"></pre>
+        <div class="cmdrow">
+          <input id="cmd-input" placeholder="RCON command, e.g. ShowPlayers / list / Broadcast hi" />
+          <button id="cmd-send" class="primary">Send</button>
+          <button id="logs-refresh">Refresh logs</button>
+          <label class="small live-toggle"><input type="checkbox" id="logs-live" checked /> <span>live</span></label>
+        </div>
+        <div id="cmd-out" class="muted small"></div>
+      </section>
+      <section id="tab-players" class="tab hidden">
+        <button id="players-refresh" class="primary">Refresh players</button>
+        <table id="players-table"><thead><tr><th>Name</th><th>UID / detail</th><th>Actions</th></tr></thead><tbody></tbody></table>
+        <pre id="players-raw" class="muted small"></pre>
+      </section>
+      <section id="tab-config" class="tab hidden">
+        <p class="muted small" id="config-path"></p>
+        <textarea id="config-editor" rows="22" spellcheck="false"></textarea>
+        <div class="btnrow"><button id="config-load" >Reload</button><button id="config-save" class="primary">Save config</button></div>
+        <p class="muted small">Restart server after changing configs.</p>
+      </section>
+      <section id="tab-palworld" class="tab hidden">
+        <p class="muted small">Parsed <code>OptionSettings</code> from PalWorldSettings.ini. Only visible for Palworld servers.</p>
+        <div id="pal-form"></div>
+        <div class="btnrow"><button id="pal-load">Reload</button><button id="pal-save" class="primary">Save Palworld settings</button></div>
+      </section>
+      <section id="tab-env" class="tab hidden">
+        <h3>Public join address (from playit)</h3>
+        <div class="cmdrow"><input id="public-addr" placeholder="e.g. xxx.asia.playit.gg:12345" /><button id="public-save" class="primary">Save</button></div>
+        <p class="muted small">Share link: <a id="share-link" href="#" target="_blank">—</a> <button id="share-copy" class="mini">Copy</button></p>
+        <h3>Environment</h3>
+        <textarea id="env-editor" rows="12" spellcheck="false"></textarea>
+        <div class="btnrow"><button id="env-save" class="primary">Save env</button></div>
+        <p class="muted small">JSON object. Recreating (Update button) / restart applies most images. RCON password keys: Palworld=ADMIN_PASSWORD, others=RCON_PASSWORD.</p>
+        <h3>Ports</h3>
+        <pre id="ports-view"></pre>
+      </section>
+      <section id="tab-mods" class="tab hidden">
+        <p class="muted small" id="mods-path"></p>
+        <h3>One-click catalog</h3>
+        <div id="mods-catalog"></div>
+        <h3>Install from URL</h3>
+        <div class="cmdrow"><input id="mod-url" placeholder="https://…/mymod.zip" /><button id="mod-install-url" class="primary">Install URL</button></div>
+        <h3>Upload file</h3>
+        <div class="cmdrow"><input id="mod-file" type="file" /><button id="mod-upload">Upload</button></div>
+        <p class="muted small">Zips auto-extract. Restart the server after adding/removing mods.</p>
+        <h3>Installed</h3>
+        <div class="btnrow"><button id="mods-refresh">Refresh</button></div>
+        <table id="mods-table"><thead><tr><th>Name</th><th>Size</th><th></th></tr></thead><tbody></tbody></table>
+      </section>
+      <section id="tab-backups" class="tab hidden">
+        <div class="btnrow"><button id="backup-now" class="primary">Create backup now</button><button id="backup-refresh">Refresh</button></div>
+        <table id="backup-table"><thead><tr><th>File</th><th>Size</th><th>Created</th><th></th></tr></thead><tbody></tbody></table>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="modal" class="hidden">
+  <div class="card">
+    <h2>New game server</h2>
+    <label>Template <select id="ns-template"></select></label>
+    <p id="ns-desc" class="muted small"></p>
+    <label>Name (a-z,0-9,-,_) <input id="ns-name" placeholder="palworld-1" /></label>
+    <label>Docker image (blank = template default) <input id="ns-image" placeholder="" /></label>
+    <label>RCON / Admin password <input id="ns-rcon" placeholder="strong password" /></label>
+    <label>Extra env (JSON, optional) <textarea id="ns-env" rows="4" placeholder='{"SERVER_NAME":"My Server"}'></textarea></label>
+    <div class="btnrow"><button id="ns-cancel">Cancel</button><button id="ns-create" class="primary">Create + Start</button></div>
+    <p id="ns-err" class="error"></p>
+  </div>
+</div>
+
+<script src="/static/app.js?v=6"></script>
+</body>
+</html>

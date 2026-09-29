@@ -108,7 +108,7 @@ async function selectServer(id) {
   document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
   $("tab-console").classList.remove("hidden");
   $("logs-live").checked = true;
-  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfig(), loadEnv(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
+  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfig(), loadEnv(), loadMods(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
   openWs();
   startLogPoll();
 }
@@ -365,6 +365,55 @@ $("env-save").onclick = async () => {
   const env = JSON.parse($("env-editor").value);
   await api.req(`/api/servers/${current}/env`, { method: "PUT", body: JSON.stringify({ env }) });
   alert("Saved. Use Update/Restart to apply.");
+};
+
+// mods
+async function loadMods() {
+  if (!current) return;
+  try {
+    const j = await api.req(`/api/servers/${current}/mods`);
+    $("mods-path").textContent = "Mods folder: " + j.mods_dir + "/  (inside server volume)";
+    const cat = $("mods-catalog"); cat.innerHTML = "";
+    (j.catalog || []).forEach(m => {
+      const row = document.createElement("div"); row.className = "cmdrow";
+      row.innerHTML = `<div style="flex:1"><b>${m.name}</b><br><span class="muted small">${m.description || ""}</span></div>`;
+      const btn = document.createElement("button"); btn.textContent = "Install"; btn.className = "primary";
+      btn.onclick = async () => {
+        let url = m.url;
+        if (!url) url = prompt(`Paste download URL for ${m.name} (Linux build .zip):`, "https://");
+        if (!url) return;
+        btn.disabled = true; btn.textContent = "Installing…";
+        try {
+          await api.req(`/api/servers/${current}/mods/install`, { method: "POST", body: JSON.stringify({ mod_id: m.id, url_override: url }) });
+          alert("Installed. Restart server to load it."); loadMods();
+        } catch (e) { alert("Install failed: " + e.message); }
+        btn.disabled = false; btn.textContent = "Install";
+      };
+      row.appendChild(btn); cat.appendChild(row);
+    });
+    if (!(j.catalog || []).length) cat.innerHTML = "<p class='muted small'>No catalog for this game — use URL install or upload below.</p>";
+    const tb = $("mods-table tbody"); tb.innerHTML = "";
+    (j.installed || []).forEach(f => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${f.name}${f.is_dir ? " /" : ""}</td><td class="muted">${f.is_dir ? "dir" : (f.size_bytes / 1024).toFixed(1) + " KB"}</td><td></td>`;
+      const del = document.createElement("button"); del.textContent = "Delete"; del.className = "mini";
+      del.onclick = async () => { if (confirm(`Delete ${f.name}?`)) { await api.req(`/api/servers/${current}/mods/${encodeURIComponent(f.name)}`, { method: "DELETE" }); loadMods(); } };
+      tr.lastChild.appendChild(del); tb.appendChild(tr);
+    });
+  } catch (e) { $("mods-path").textContent = "ERROR: " + e.message; }
+}
+$("mods-refresh").onclick = loadMods;
+$("mod-install-url").onclick = async () => {
+  const url = $("mod-url").value.trim(); if (!url || !current) return;
+  await api.req(`/api/servers/${current}/mods/install`, { method: "POST", body: JSON.stringify({ url }) });
+  $("mod-url").value = ""; alert("Installed. Restart server to load it."); loadMods();
+};
+$("mod-upload").onclick = async () => {
+  const f = $("mod-file").files[0]; if (!f || !current) return alert("Pick a file first");
+  const fd = new FormData(); fd.append("file", f);
+  const r = await fetch(`/api/servers/${current}/mods/upload`, { method: "POST", headers: { Authorization: "Bearer " + api.token }, body: fd });
+  if (!r.ok) throw new Error(await r.text());
+  alert("Uploaded. Restart server to load it."); loadMods();
 };
 
 // backups

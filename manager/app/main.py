@@ -5,12 +5,14 @@ import json
 from pathlib import Path
 
 import psutil
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, backups, config, docker_service
+from . import ip_gate
+from . import mods as mods_svc
 from . import palworld_config as pal_cfg
 from . import rcon_helpers
 from .games.templates import get_template, list_templates
@@ -25,6 +27,20 @@ app.add_middleware(
 )
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+@app.middleware("http")
+async def admin_ip_gate(request: Request, call_next):
+    """Restrict /admin + management /api/* to ADMIN_ALLOWED_IPS.
+    Public surface stays open: /, /share/*, /public/*, /static/*, /favicon*."""
+    path = request.url.path
+    if path == "/admin" or path.startswith("/admin/") or (
+        path.startswith("/api/") and not path.startswith("/api/docs")
+    ):
+        ip = ip_gate.client_ip(request)
+        if not ip_gate.is_allowed(ip):
+            return JSONResponse(status_code=403, content={"detail": "Admin access restricted (IP not allowlisted)"})
+    return await call_next(request)
 
 
 @app.post("/api/login", response_model=TokenResponse)
@@ -45,6 +61,7 @@ def templates(_=Depends(auth.require_auth)):
             "rcon_supported": t.rcon_supported, "rcon_port": t.rcon_port,
             "config_files": [c.__dict__ for c in t.config_files],
             "helpful_commands": t.helpful_commands,
+            "mods_dir": t.mods_dir, "mod_catalog": t.mod_catalog,
         })
     return out
 
@@ -119,9 +136,8 @@ def api_set_public_address(server_id: str, body: dict, _=Depends(auth.require_au
     return {"public_address": addr, "share_url": f"/share/{server_id}"}
 
 
-@app.get("/public/servers/{server_id}")
-def public_server_status(server_id: str):
-    """Public share endpoint - NO auth. Only safe fields: status, address, stats, player names."""
+def _public_status(server_id: str) -> dict:
+    """Safe public fields only: status, address, stats, player names (never ids/passwords)."""
     inst = docker_service.get_instance(server_id)
     if not inst:
         raise HTTPException(404, "Server not found")
@@ -140,6 +156,7 @@ def public_server_status(server_id: str):
     except Exception:
         pass
     return {
+        "id": inst.id,
         "name": inst.name,
         "game": inst.game,
         "game_name": tpl.name if tpl else inst.game,
@@ -151,6 +168,18 @@ def public_server_status(server_id: str):
         "players_online": players_online if players_online is not None else stats.get("players_online"),
         "players": players,
     }
+
+
+@app.get("/public/servers")
+def public_server_list():
+    """Public homepage feed - NO auth. One entry per server (names + status + addresses)."""
+    return [_public_status(s.id) for s in docker_service.list_instances()]
+
+
+@app.get("/public/servers/{server_id}")
+def public_server_status(server_id: str):
+    """Public share endpoint - NO auth. Only safe fields: status, address, stats, player names."""
+    return _public_status(server_id)
 
 
 @app.delete("/api/servers/{server_id}")
@@ -419,6 +448,93 @@ def api_del_backup(filename: str, _=Depends(auth.require_auth)):
     return {"status": "deleted"}
 
 
+@app.get("/api/servers/{server_id}/mods")
+def api_list_mods(server_id: str, _=Depends(auth.require_auth)):
+    try:
+        inst = docker_service.get_instance(server_id)
+        tpl = get_template(inst.game) if inst else None
+        return {
+            "mods_dir": (tpl.mods_dir if tpl else "mods"),
+            "catalog": (tpl.mod_catalog if tpl else []),
+            "installed": mods_svc.list_mods(server_id),
+        }
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/servers/{server_id}/mods/install", status_code=201)
+def api_install_mod(server_id: str, body: dict, _=Depends(auth.require_auth)):
+    """Install by catalog id, direct URL, or catalog entry with custom URL. Body: {"mod_id"|"url", "filename"?}"""
+    try:
+        url, filename = "", ""
+        if body.get("url"):
+            url = body["url"]
+            filename = body.get("filename", "")
+        elif body.get("mod_id"):
+            inst = docker_service.get_instance(server_id)
+            tpl = get_template(inst.game) if inst else None
+            entry = next((m for m in (tpl.mod_catalog if tpl else []) if m["id"] == body["mod_id"]), None)
+            if not entry:
+                raise HTTPException(404, "Catalog mod not found")
+            url = body.get("url_override") or entry.get("url", "")
+            filename = entry.get("filename", "")
+            if not url:
+                raise HTTPException(400, "This catalog entry needs a download URL (paste release URL as 'url').")
+        else:
+            raise HTTPException(400, "Provide mod_id or url")
+        name = mods_svc.download_mod(server_id, url, filename)
+        return {"status": "installed", "name": name, "note": "Restart server to load mods."}
+    except HTTPException:
+        raise
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except Exception as e:
+        raise HTTPException(502, f"Download failed: {e}")
+
+
+@app.post("/api/servers/{server_id}/mods/upload", status_code=201)
+async def api_upload_mod(server_id: str, file: UploadFile = File(...), _=Depends(auth.require_auth)):
+    try:
+        d = mods_svc.mods_dir(server_id)
+        name = (file.filename or "upload.bin").split("/")[-1]
+        if ".." in name or not name:
+            raise HTTPException(400, "Invalid filename")
+        dest = d / name
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+        # auto-extract zips for convenience
+        if dest.suffix.lower() == ".zip":
+            import zipfile
+            with zipfile.ZipFile(dest) as z:
+                z.extractall(d)
+            dest.unlink()
+            return {"status": "uploaded+extracted", "name": name}
+        return {"status": "uploaded", "name": name}
+    except HTTPException:
+        raise
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/servers/{server_id}/mods/{name}")
+def api_delete_mod(server_id: str, name: str, _=Depends(auth.require_auth)):
+    try:
+        mods_svc.delete_mod(server_id, name)
+        return {"status": "deleted"}
+    except KeyError:
+        raise HTTPException(404, "Mod not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/api/system")
 def api_system(_=Depends(auth.require_auth)):
     vm = psutil.virtual_memory()
@@ -441,6 +557,11 @@ if STATIC_DIR.exists():
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(str(STATIC_DIR / "index.html"))
+
+    @app.get("/admin", include_in_schema=False)
+    def admin(request: Request):
+        ip_gate.require_admin_ip(request)
+        return FileResponse(str(STATIC_DIR / "admin.html"))
 
     @app.get("/share/{server_id}", include_in_schema=False)
     def share_page(server_id: str):

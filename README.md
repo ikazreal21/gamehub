@@ -17,6 +17,7 @@ Stack: **Python FastAPI backend** + vanilla JS frontend, Docker Compose deploy. 
 - **⬆ Update**: pulls latest image + recreates (how SteamCMD games update) with live progress (`⏳ Updating…` → `✅ done`)
 - **Metrics**: CPU / RAM / players with legend + history chart
 - **Share page**: public read-only status page per server (`/share/{id}`) with join address, stats, player names — no login needed
+- **Public homepage + IP-gated admin**: `/` shows all servers publicly; the management UI lives at `/admin`, optionally restricted to your IPs via `ADMIN_ALLOWED_IPS`
 - **Multi-game**: templates for Palworld, Minecraft Java, Valheim, Project Zomboid, Generic/Custom
 
 ## Screenshots
@@ -84,6 +85,19 @@ docker compose up -d --build        # update manager
 ```
 
 Put the UI behind HTTPS in production (Cloudflare Tunnel, Caddy, or Nginx reverse proxy). If proxying through Cloudflare: turn OFF Bot Fight Mode, add a WAF Skip + Cache Bypass for `/api/*`, keep WebSockets ON.
+
+### Restricting /admin to your IP
+
+`/` (homepage), `/share/*` and `/public/*` are intentionally public. The management UI at `/admin` **and** the management API (`/api/*`, login included) can be locked to your IPs:
+
+```bash
+# .env
+ADMIN_ALLOWED_IPS=192.168.50.0/24, 203.0.113.7
+```
+
+Comma-separated IPs/CIDRs. Behind Cloudflare Tunnel it reads `CF-Connecting-IP`. Localhost is always allowed. Empty = no restriction (login still required).
+
+⚠️ On CGNAT / mobile data your public IP changes often — if you get locked out (403), SSH in, clear the value, and rebuild: `docker compose up -d --build`.
 
 ## Usage
 
@@ -153,9 +167,10 @@ gamehub/
       palworld_config.py  # OptionSettings parser/serializer
       backups.py
       mods.py             # mods folder + URL installs
+      ip_gate.py          # IP allowlist for /admin + /api
       games/base.py       # GameTemplate + ServerInstance dataclasses
       games/templates.py  # ★ add games here ★
-    static/               # frontend (index.html, share.html, app.js, styles.css, favicon.svg)
+    static/               # frontend (index.html homepage, admin.html, share.html, app.js, styles.css, favicon.svg)
   docs/                   # screenshots for this README
   data/ backups/          # runtime (volumes, instances.json, archives) - git-ignored
 ```
@@ -172,12 +187,13 @@ Auth: all `/api/*` except `POST /api/login` need `Authorization: Bearer <token>`
 - `GET/PUT /api/servers/{id}/config`, `GET/PUT /api/servers/{id}/palworld-settings`
 - `GET /api/servers/{id}/mods`, `POST .../mods/install`, `POST .../mods/upload`, `DELETE .../mods/{name}`
 - `GET /api/backups`, `POST /api/servers/{id}/backup`, `DELETE /api/backups/{f}`, `GET /api/system`
-- `GET /public/servers/{id}` (no auth — status, join address, stats, player names only), `GET /share/{id}` page
+- `GET /public/servers`, `GET /public/servers/{id}` (no auth — status, join address, stats, player names only), `GET /share/{id}` page, `/` homepage
 
 ## Security checklist (do this before going public)
 
 - [ ] `.env` has a strong `ADMIN_PASS` and a random 32-byte `SECRET_KEY` (never commit `.env` — it's git-ignored; only `.env.example` with placeholders is tracked)
 - [ ] UI served over HTTPS (reverse proxy / Cloudflare Tunnel), not plain HTTP
+- [ ] `/admin` + `/api/*` locked via `ADMIN_ALLOWED_IPS` if the site is public (homepage `/` stays open by design)
 - [ ] RCON ports firewalled to localhost / trusted IPs only — never tunneled publicly
 - [ ] Host OS + Docker kept patched; backups copied off-site
 - [ ] Note: the manager mounts the Docker socket, which is root-equivalent on the host — anyone with the admin login effectively has host root. Guard that password.

@@ -47,6 +47,11 @@ _register(GameTemplate(
     ],
     helpful_commands=["ShowPlayers", "Info", "Save", "Broadcast Hello players!", "KickPlayer <steamid>", "BanPlayer <steamid>"],
     needs_steamcmd_update=True,
+    mods_dir="Pal/Binaries/Linux/Mods",
+    mod_catalog=[
+        {"id": "ue4ss", "name": "UE4SS (mod loader, required first)", "url": "https://github.com/UE4SS-RE/RE-UE4SS/releases/latest/download/UE4SS_v3_Linux.zip", "filename": "UE4SS_v3_Linux.zip", "description": "Script mod loader. Install this before gameplay mods. Restart after install."},
+        {"id": "adminengine", "name": "AdminEngine (!give, !spawn)", "url": "", "filename": "", "description": "Adds !give / !spawn chat commands. Requires UE4SS. Paste its download URL below (manual URL install) — pick the Linux build from its releases page."},
+    ],
 ))
 
 _register(GameTemplate(
@@ -78,6 +83,8 @@ _register(GameTemplate(
         ConfigFileDef(path_in_volume="server.properties", language="properties", description="Vanilla server.properties"),
     ],
     helpful_commands=["list", "say Hello from GameHub!", "save-all", "whitelist list", "op <player>"],
+    mods_dir="mods",
+    mod_catalog=[],
 ))
 
 _register(GameTemplate(
@@ -101,6 +108,8 @@ _register(GameTemplate(
     config_files=[],
     helpful_commands=[],
     needs_steamcmd_update=True,
+    mods_dir="plugins",
+    mod_catalog=[],
 ))
 
 _register(GameTemplate(
@@ -130,6 +139,8 @@ _register(GameTemplate(
     ],
     helpful_commands=["players", "save", "quit"],
     needs_steamcmd_update=True,
+    mods_dir="Server/mods",
+    mod_catalog=[],
 ))
 
 _register(GameTemplate(
@@ -143,6 +154,8 @@ _register(GameTemplate(
     rcon_supported=True,
     rcon_port=None,
     helpful_commands=[],
+    mods_dir="mods",
+    mod_catalog=[],
 ))
 
 

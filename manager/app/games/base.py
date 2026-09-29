@@ -41,6 +41,9 @@ class GameTemplate:
     # helpful commands shown as buttons in UI
     helpful_commands: List[str] = field(default_factory=list)
     needs_steamcmd_update: bool = False
+    # mods: folder inside "data" volume + installable catalog {id,name,url,description,filename}
+    mods_dir: str = ""
+    mod_catalog: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
