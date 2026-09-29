@@ -94,6 +94,7 @@ function updateActionButtons(state) {
 
 async function selectServer(id) {
   current = id;
+  lastState = "";
   await loadServers();
   closeWs();
   stopLogPoll();
@@ -108,14 +109,31 @@ async function selectServer(id) {
   startLogPoll();
 }
 
+let lastState = "";
+async function reliveLogs(reason) {
+  if (!current) return;
+  if (reason) $("logs").textContent += `\n--- ${reason} ---\n`;
+  try { await loadLogs(); } catch {}
+  closeWs(); openWs(); stopLogPoll(); startLogPoll();
+}
+
 document.querySelectorAll("#detail-head [data-act]").forEach(b => b.onclick = async () => {
   if (!current) return;
   const act = b.dataset.act;
   if (act === "delete" && !confirm("Delete server container? (volumes kept unless you remove them manually)")) return;
   try {
-    if (act === "delete") { await api.req(`/api/servers/${current}`, { method: "DELETE" }); current = null; $("detail").classList.add("hidden"); $("empty-state").classList.remove("hidden"); }
-    else await api.req(`/api/servers/${current}/${act}`, { method: "POST" });
-    await loadServers(); if (current) await refreshStats();
+    if (act === "delete") {
+      await api.req(`/api/servers/${current}`, { method: "DELETE" });
+      current = null; lastState = "";
+      closeWs(); stopLogPoll();
+      $("detail").classList.add("hidden"); $("empty-state").classList.remove("hidden");
+      await loadServers();
+    } else {
+      await api.req(`/api/servers/${current}/${act}`, { method: "POST" });
+      await loadServers(); if (current) await refreshStats();
+      // container recreated/restarted -> old WS stream is dead, resubscribe + show event
+      await reliveLogs(act === "start" ? "starting server…" : act === "stop" ? "stopping server…" : "restarting server…");
+    }
   } catch (e) { alert(e.message); }
 });
 
@@ -130,6 +148,9 @@ async function refreshStats() {
     updateActionButtons(s.state);
     const srv = servers.find(x => x.id === current);
     if (srv && srv.state !== s.state) { srv.state = s.state; paintHead({ ...srv, state: s.state }); }
+    // state flipped (e.g. running -> exited after Stop pressed elsewhere) -> resubscribe logs
+    if (lastState && lastState !== s.state) { reliveLogs(`state: ${lastState} → ${s.state}`); }
+    lastState = s.state;
     hist.cpu.push(s.cpu_percent || 0); hist.mem.push(s.mem_mb || 0);
     if (hist.cpu.length > 60) { hist.cpu.shift(); hist.mem.shift(); }
     drawChart();
@@ -186,7 +207,7 @@ async function loadQuickCmds() {
     $("quick-cmds").appendChild(b);
   });
 }
-let logPollTimer = null;
+let logPollTimer = null, wsRetryTimer = null;
 function openWs() {
   closeWs();
   if (!$("logs-live").checked || !current) return;
@@ -197,21 +218,28 @@ function openWs() {
       // auto-scroll only if user is already near bottom
       const nearBottom = $("logs").scrollTop + $("logs").clientHeight > $("logs").scrollHeight - 80;
       $("logs").textContent += e.data;
+      // cap buffer so long sessions don't freeze the tab
+      if ($("logs").textContent.length > 200000) $("logs").textContent = $("logs").textContent.slice(-150000);
       if (nearBottom) $("logs").scrollTop = 1e9;
     };
-    ws.onclose = () => { /* polling fallback keeps logs fresh */ };
+    ws.onclose = () => {
+      // container restarted or proxy killed WS -> retry in 3s while live is on
+      if (!$("logs-live").checked || !current) return;
+      clearTimeout(wsRetryTimer);
+      wsRetryTimer = setTimeout(() => { if (current && $("logs-live").checked) openWs(); }, 3000);
+    };
   } catch {}
 }
-function closeWs() { try { ws?.close(); } catch {} ws = null; }
-// Auto live: poll tail every 5s as fallback (covers WS drops / proxies killing WS).
+function closeWs() { try { ws?.close(); } catch {} ws = null; clearTimeout(wsRetryTimer); }
+// Live = WS primary + 5s REST replace-fallback (covers restarts / WS drops).
 function startLogPoll() {
   stopLogPoll();
   logPollTimer = setInterval(async () => {
     if (!current || !$("logs-live").checked) return;
     if (ws && ws.readyState === WebSocket.OPEN) return; // WS already live
     try {
-      const j = await api.req(`/api/servers/${current}/logs?tail=100`);
-      if (j.logs) { $("logs").textContent += j.logs.slice(-4000); $("logs").scrollTop = 1e9; }
+      const j = await api.req(`/api/servers/${current}/logs?tail=150`);
+      if (j.logs !== undefined) { $("logs").textContent = (j.logs || "").slice(-60000); $("logs").scrollTop = 1e9; }
     } catch {}
   }, 5000);
 }
