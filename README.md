@@ -4,28 +4,73 @@ Control **Palworld** (start/stop/restart, live console, RCON player admin, PalWo
 
 Stack: **Python FastAPI backend** + vanilla JS frontend, Docker Compose deploy. Manager controls game containers via the Docker socket.
 
-## Quick deploy (Linux server + Docker)
+## Deploy
+
+### Prerequisites (your Linux server)
+
+- Ubuntu 22.04 / 24.04 (Debian works too), 4GB+ RAM for Palworld
+- Ports: **8000/tcp** manager UI. Game ports are reached via playit tunnel if you're behind CGNAT (see below).
+- No public IP needed if using playit.gg (recommended for PH ISPs on CGNAT).
+
+### Option A — one-command (recommended)
 
 ```bash
-# 1. copy project to server
-scp -r gamehub user@server:/opt/gamehub
-ssh user@server
+# from GitHub (on your SERVER):
+git clone https://github.com/<you>/gamehub.git /opt/gamehub
+cd /opt/gamehub
+chmod +x setup-server.sh
+sudo ./setup-server.sh --admin-pass 'pick-a-strong-password' --with-playit --yes
 
+# or copy from this PC instead of GitHub:
+# scp -r gamehub user@server:/opt/gamehub
+# ssh user@server
+# cd /opt/gamehub && chmod +x setup-server.sh
+# sudo ./setup-server.sh --admin-pass 'pick-a-strong-password' --with-playit --yes
+```
+
+What the script does: installs Docker + UFW (allows ssh + manager port), generates `.env` with random `SECRET_KEY`, runs `docker compose up -d --build`, installs playit agent. It prints your UI URL + login at the end.
+
+Flags: `--admin-user admin`, `--port 8000`, `--playit-secret KEY` (fully non-interactive playit, key from playit.gg dashboard → Agents), `--yes`.
+
+### Option B — manual
+
+```bash
+git clone https://github.com/<you>/gamehub.git /opt/gamehub
 cd /opt/gamehub
 cp .env.example .env
-# edit .env -> set ADMIN_PASS + SECRET_KEY (openssl rand -hex 32)
-nano .env
-
+nano .env   # set ADMIN_PASS + SECRET_KEY (openssl rand -hex 32)
 docker compose up -d --build
 # open http://<server-ip>:8000  login: admin / your ADMIN_PASS
 ```
 
-Manager needs `/var/run/docker.sock` (already in compose) + ports open:
-- **8000** manager UI
-- **8211/udp + 27015/udp + 25575/tcp** Palworld defaults (adjust per game)
-- Use UFW: `ufw allow 8000/tcp && ufw allow 8211/udp && ufw allow 27015/udp`
+### CGNAT / playit.gg setup (PH ISPs: PLDT, Globe, Converge, DITO)
 
-Put behind HTTPS in production (Caddy/Nginx reverse proxy).
+Router port-forward won't work behind CGNAT. The playit agent tunnels out from your server:
+
+```bash
+sudo playit
+# prints https://playit.gg/claim/xxxx -> open it, login, claim agent
+```
+
+Then in https://playit.gg/account/tunnels → Add Tunnel (region: Asia):
+- UDP `127.0.0.1:8211` — Palworld game
+- UDP `127.0.0.1:27015` — Palworld query
+
+Give players the playit address (e.g. `xxx.asia.playit.gg:12345`). Keep RCON `25575` internal — do NOT tunnel it.
+
+Docker-mode alternative: put your agent key in `.env` as `PLAYIT_SECRET=...` then `docker compose --profile playit up -d`.
+
+### Updates & maintenance
+
+```bash
+cd /opt/gamehub
+git pull
+docker compose up -d --build        # update manager
+# game updates: use ⬆ Update button in UI (pulls latest SteamCMD image + recreates)
+# backups live in ./backups/ - copy them off-site
+```
+
+Put the UI behind HTTPS in production (Caddy/Nginx reverse proxy).
 
 ## Usage
 
@@ -72,8 +117,10 @@ Player parsing per game lives in `manager/app/rcon_helpers.py::parse_players` �
 
 ```
 gamehub/
-  docker-compose.yml      # manager + (optional) pre-seeded game
+  setup-server.sh         # one-command server installer (+ playit for CGNAT)
+  docker-compose.yml      # manager + optional playit profile
   .env.example
+  .gitignore
   manager/
     Dockerfile
     requirements.txt
