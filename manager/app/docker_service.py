@@ -123,6 +123,11 @@ def ensure_container(inst: ServerInstance):
             port_bindings[f"{p['container']}/udp"] = p["host"]
         else:
             port_bindings[cport] = p["host"]
+    # auto-pull image on first create (fixes "No such image" on fresh hosts)
+    try:
+        c.images.get(inst.image)
+    except Exception:
+        c.images.pull(inst.image)
     container = c.containers.create(
         inst.image, name=inst.id, environment=inst.env,
         ports=port_bindings, volumes=volumes, detach=True,
