@@ -76,15 +76,36 @@ function paintHead(s) {
   $("empty-state").classList.add("hidden"); $("detail").classList.remove("hidden");
   $("d-name").textContent = `${s.name}`;
   $("d-meta").textContent = ` ${s.game_name} · ${s.image} · ${s.state}`;
+  updateActionButtons(s.state);
+}
+
+// State-aware action buttons: running -> can't Start/Delete (must Stop first).
+// Stopped/exited -> can't Stop (must Start first). Delete requires stopped.
+function updateActionButtons(state) {
+  const running = state === "running";
+  const btns = {};
+  document.querySelectorAll("#detail-head [data-act]").forEach(b => btns[b.dataset.act] = b);
+  if (btns.start) { btns.start.disabled = running; btns.start.title = running ? "Server is already running" : "Start server"; }
+  if (btns.stop) { btns.stop.disabled = !running; btns.stop.title = running ? "Stop server" : "Server is not running"; }
+  if (btns.restart) { btns.restart.disabled = !running; btns.restart.title = running ? "Restart server" : "Start server instead (not running)"; }
+  if (btns.update) { btns.update.disabled = false; btns.update.title = "Pull latest image + recreate (game update)"; }
+  if (btns.delete) { btns.delete.disabled = running; btns.delete.title = running ? "Stop server before deleting" : "Delete server container"; }
 }
 
 async function selectServer(id) {
   current = id;
   await loadServers();
   closeWs();
+  stopLogPoll();
   hist = { cpu: [], mem: [] };
+  // always open on Console tab with live logs on
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === "console"));
+  document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
+  $("tab-console").classList.remove("hidden");
+  $("logs-live").checked = true;
   await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfig(), loadEnv(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
   openWs();
+  startLogPoll();
 }
 
 document.querySelectorAll("#detail-head [data-act]").forEach(b => b.onclick = async () => {
@@ -106,6 +127,9 @@ async function refreshStats() {
     $("s-cpu").textContent = (s.cpu_percent ?? "?") + " %";
     $("s-mem").textContent = (s.mem_mb ?? "?") + " MB";
     $("s-players").textContent = s.players_online ?? "?";
+    updateActionButtons(s.state);
+    const srv = servers.find(x => x.id === current);
+    if (srv && srv.state !== s.state) { srv.state = s.state; paintHead({ ...srv, state: s.state }); }
     hist.cpu.push(s.cpu_percent || 0); hist.mem.push(s.mem_mb || 0);
     if (hist.cpu.length > 60) { hist.cpu.shift(); hist.mem.shift(); }
     drawChart();
@@ -162,17 +186,37 @@ async function loadQuickCmds() {
     $("quick-cmds").appendChild(b);
   });
 }
+let logPollTimer = null;
 function openWs() {
   closeWs();
   if (!$("logs-live").checked || !current) return;
   try {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/api/servers/${current}/logs/ws?token=${api.token}`);
-    ws.onmessage = (e) => { $("logs").textContent += e.data; $("logs").scrollTop = 1e9; };
+    ws.onmessage = (e) => {
+      // auto-scroll only if user is already near bottom
+      const nearBottom = $("logs").scrollTop + $("logs").clientHeight > $("logs").scrollHeight - 80;
+      $("logs").textContent += e.data;
+      if (nearBottom) $("logs").scrollTop = 1e9;
+    };
+    ws.onclose = () => { /* polling fallback keeps logs fresh */ };
   } catch {}
 }
 function closeWs() { try { ws?.close(); } catch {} ws = null; }
-$("logs-live").onchange = () => { closeWs(); if ($("logs-live").checked) openWs(); };
+// Auto live: poll tail every 5s as fallback (covers WS drops / proxies killing WS).
+function startLogPoll() {
+  stopLogPoll();
+  logPollTimer = setInterval(async () => {
+    if (!current || !$("logs-live").checked) return;
+    if (ws && ws.readyState === WebSocket.OPEN) return; // WS already live
+    try {
+      const j = await api.req(`/api/servers/${current}/logs?tail=100`);
+      if (j.logs) { $("logs").textContent += j.logs.slice(-4000); $("logs").scrollTop = 1e9; }
+    } catch {}
+  }, 5000);
+}
+function stopLogPoll() { if (logPollTimer) clearInterval(logPollTimer); logPollTimer = null; }
+$("logs-live").onchange = () => { closeWs(); if ($("logs-live").checked) { openWs(); startLogPoll(); } else stopLogPoll(); };
 
 // players
 async function loadPlayers() {
