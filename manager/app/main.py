@@ -182,15 +182,52 @@ def api_restart(server_id: str, _=Depends(auth.require_auth)):
     return docker_service.restart(server_id)
 
 
+import threading
+import time as _time
+
+_update_jobs: dict[str, dict] = {}
+
+
+def _run_update_job(server_id: str):
+    job = _update_jobs[server_id]
+    job["log"].append("Pulling latest image… (this takes minutes on big SteamCMD images)")
+    try:
+        res = docker_service.update_image(server_id)
+        job["log"].append(f"Recreated container (restarted={res.get('restarted')}). Waiting for boot…")
+        # wait until container reports running (max ~120s) so UI "done" is truthful
+        for _ in range(40):
+            _time.sleep(3)
+            if docker_service.container_state(server_id) == "running":
+                break
+            job["log"].append(f"… state={docker_service.container_state(server_id)}")
+        job["log"].append(f"Done. state={docker_service.container_state(server_id)}")
+        job["state"] = "done"
+        job["result"] = res
+    except Exception as e:
+        job["state"] = "error"
+        job["error"] = str(e)
+        job["log"].append(f"ERROR: {e}")
+
+
 @app.post("/api/servers/{server_id}/update")
 def api_update(server_id: str, _=Depends(auth.require_auth)):
-    """Pull latest image + recreate (SteamCMD game update)."""
-    try:
-        return docker_service.update_image(server_id)
-    except KeyError:
+    """Start image pull + recreate as background job (SteamCMD game update). Poll status endpoint."""
+    if not docker_service.get_instance(server_id):
         raise HTTPException(404, "Server not found")
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    cur = _update_jobs.get(server_id)
+    if cur and cur["state"] == "running":
+        raise HTTPException(409, "Update already in progress")
+    _update_jobs[server_id] = {"state": "running", "log": ["Update started"], "error": "", "result": None}
+    threading.Thread(target=_run_update_job, args=(server_id,), daemon=True).start()
+    return {"status": "started"}
+
+
+@app.get("/api/servers/{server_id}/update/status")
+def api_update_status(server_id: str, _=Depends(auth.require_auth)):
+    job = _update_jobs.get(server_id)
+    if not job:
+        return {"state": "idle", "log": []}
+    return job
 
 
 @app.get("/api/servers/{server_id}/stats")

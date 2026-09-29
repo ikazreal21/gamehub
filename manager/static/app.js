@@ -132,6 +132,31 @@ document.querySelectorAll("#detail-head [data-act]").forEach(b => b.onclick = as
       closeWs(); stopLogPoll();
       $("detail").classList.add("hidden"); $("empty-state").classList.remove("hidden");
       await loadServers();
+    } else if (act === "update") {
+      const btn = document.querySelector('#detail-head [data-act="update"]');
+      if (btn) { btn.disabled = true; btn.textContent = "⏳ Updating…"; }
+      $("cmd-out").textContent = "Update started — pulling image (minutes)…";
+      try {
+        await api.req(`/api/servers/${current}/update`, { method: "POST" });
+      } catch (e) {
+        if (!String(e.message).includes("already in progress")) throw e;
+      }
+      // poll job until done/error
+      for (let i = 0; i < 120; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const st = await api.req(`/api/servers/${current}/update/status`);
+        const last = (st.log || []).slice(-3).join(" | ");
+        $("cmd-out").textContent = `Updating… ${last || ""}`;
+        if (st.state === "done" || st.state === "error") {
+          $("cmd-out").textContent = st.state === "done"
+            ? "✅ Update done: " + (st.log || []).slice(-2).join(" | ")
+            : "❌ Update failed: " + (st.error || "unknown");
+          break;
+        }
+      }
+      if (btn) { btn.disabled = false; btn.textContent = "⬆ Update"; }
+      await loadServers(); if (current) await refreshStats();
+      await reliveLogs("update finished — fresh logs below");
     } else {
       await api.req(`/api/servers/${current}/${act}`, { method: "POST" });
       await loadServers(); if (current) await refreshStats();
