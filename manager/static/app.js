@@ -9,8 +9,12 @@ const api = {
     });
     if (r.status === 401) { this.logout(); throw new Error("unauthorized"); }
     const t = await r.text();
+    // Cloudflare challenge / WAF block returns HTML instead of JSON - surface friendly hint
+    if (t.trimStart().startsWith("<!DOCTYPE") || t.trimStart().startsWith("<html")) {
+      throw new Error(`Blocked by Cloudflare (HTTP ${r.status}). Fix: Cloudflare dashboard → turn OFF Bot Fight Mode, add WAF Skip for /api/*, set Cache Rule Bypass for /api/*, keep WebSockets ON. Then retry.`);
+    }
     let j; try { j = JSON.parse(t); } catch { j = { raw: t }; }
-    if (!r.ok) throw new Error(j.detail || t.slice(0, 300));
+    if (!r.ok) throw new Error(typeof j.detail === "string" ? j.detail.slice(0, 300) : t.slice(0, 300));
     return j;
   },
   logout() { this.token = ""; localStorage.removeItem("gh_token"); location.reload(); },
