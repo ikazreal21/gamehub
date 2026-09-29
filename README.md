@@ -194,4 +194,4 @@ MOCK_DOCKER=true ADMIN_PASS=dev-only SECRET_KEY=dev-only-32-bytes-long-xxxx uvic
 
 ## License
 
-No license file ships with this repo yet — add one (MIT recommended) before accepting contributions, otherwise others have no legal right to reuse the code.
+MIT — see [LICENSE](LICENSE).
