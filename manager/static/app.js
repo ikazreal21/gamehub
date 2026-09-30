@@ -22,8 +22,8 @@ const api = {
 
 let servers = [], templates = [], current = null, ws = null, hist = { cpu: [], mem: [] };
 
-// login
-$("login-btn").onclick = async () => {
+// login (button click or Enter key)
+async function doLogin() {
   $("login-err").textContent = "";
   try {
     const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -33,7 +33,11 @@ $("login-btn").onclick = async () => {
     api.token = j.access_token; localStorage.setItem("gh_token", api.token);
     boot();
   } catch (e) { $("login-err").textContent = String(e.message || e); }
-};
+}
+$("login-btn").onclick = doLogin;
+[$("login-user"), $("login-pass")].forEach(el => el?.addEventListener("keydown", e => {
+  if (e.key === "Enter") doLogin();
+}));
 $("logout").onclick = () => api.logout();
 
 async function boot() {
