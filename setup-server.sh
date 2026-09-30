@@ -2,7 +2,7 @@
 # GameHub one-command server setup (Ubuntu/Debian) + CGNAT playit helper.
 #
 # Usage on your LINUX SERVER (not your PC):
-#   git clone <your-repo> /opt/gamehub && cd /opt/gamehub
+#   git clone https://github.com/ikazreal21/gamehub.git /opt/gamehub && cd /opt/gamehub
 #   chmod +x setup-server.sh
 #   sudo ./setup-server.sh --admin-pass 'pick-a-strong-password' --with-playit
 #

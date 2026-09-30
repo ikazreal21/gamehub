@@ -37,7 +37,7 @@ Stack: **Python FastAPI backend** + vanilla JS frontend, Docker Compose deploy. 
 ### Option A — one-command (recommended)
 
 ```bash
-git clone https://github.com/your-username/gamehub.git /opt/gamehub
+git clone https://github.com/ikazreal21/gamehub.git /opt/gamehub
 cd /opt/gamehub
 chmod +x setup-server.sh
 sudo ./setup-server.sh --admin-pass 'pick-a-strong-password' --with-playit --yes
@@ -50,7 +50,7 @@ Flags: `--admin-user admin`, `--port 8000`, `--with-playit`, `--playit-secret KE
 ### Option B — manual
 
 ```bash
-git clone https://github.com/your-username/gamehub.git /opt/gamehub
+git clone https://github.com/ikazreal21/gamehub.git /opt/gamehub
 cd /opt/gamehub
 cp .env.example .env
 nano .env   # set ADMIN_PASS + SECRET_KEY (openssl rand -hex 32)

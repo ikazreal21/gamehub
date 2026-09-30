@@ -293,7 +293,7 @@ async function loadPlayers() {
   if (!current) return;
   try {
     const j = await api.req(`/api/servers/${current}/players`);
-    const tb = $("players-table tbody"); tb.innerHTML = "";
+    const tb = document.querySelector("#players-table tbody"); tb.innerHTML = "";
     (j.players || []).forEach(p => {
       const tr = document.createElement("tr");
       const detail = p.steam_id || p.uid || "";
@@ -504,7 +504,7 @@ async function loadMods() {
       row.appendChild(btn); cat.appendChild(row);
     });
     if (!(j.catalog || []).length) cat.innerHTML = "<p class='muted small'>No catalog for this game — use URL install or upload below.</p>";
-    const tb = $("mods-table tbody"); tb.innerHTML = "";
+    const tb = document.querySelector("#mods-table tbody"); tb.innerHTML = "";
     (j.installed || []).forEach(f => {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td>${f.name}${f.is_dir ? " /" : ""}</td><td class="muted">${f.is_dir ? "dir" : (f.size_bytes / 1024).toFixed(1) + " KB"}</td><td></td>`;
@@ -532,7 +532,7 @@ $("mod-upload").onclick = async () => {
 async function loadBackups() {
   if (!current) return;
   const j = await api.req(`/api/backups?server=${current}`);
-  const tb = $("backup-table tbody"); tb.innerHTML = "";
+  const tb = document.querySelector("#backup-table tbody"); tb.innerHTML = "";
   j.forEach(b => {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td>${b.filename}</td><td>${(b.size_bytes / 1024).toFixed(1)} KB</td><td>${b.created}</td><td></td>`;

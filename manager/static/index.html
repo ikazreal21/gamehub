@@ -89,13 +89,14 @@ pre.snippet{background:#0e0c06;color:#9ed07e;border:3px solid #120d08;border-rad
   <div class="section card">
     <h2>💾 Open source — run your own</h2>
     <p class="small"><b>GameHub is free and open-source (MIT).</b> Put it on any Ubuntu server with Docker and host your own games the same way: one command installs the manager, and the playit agent gets you past CGNAT without touching your router. Fork it, add game templates, self-host forever — no accounts, no fees, your data stays on your box.</p>
-    <pre class="snippet">git clone https://github.com/your-username/gamehub.git /opt/gamehub
+    <pre class="snippet">git clone https://github.com/ikazreal21/gamehub.git /opt/gamehub
 cd /opt/gamehub &amp;&amp; chmod +x setup-server.sh
 sudo ./setup-server.sh --admin-pass 'strong-password' --with-playit --yes</pre>
     <p class="muted small">Stack: Python FastAPI + vanilla JS, Docker Compose deploy. Templates for Palworld, Minecraft Java, Valheim, Project Zomboid + Generic/Custom — new games are one block in <code>games/templates.py</code>.</p>
+    <p><a href="https://github.com/ikazreal21/gamehub" target="_blank"><button class="primary">★ View on GitHub</button></a></p>
   </div>
 
-  <div class="footer muted">GameHub · MIT © Zaki Soriano · <a href="/admin">Admin</a></div>
+  <div class="footer muted">GameHub · MIT © Zaki Soriano · <a href="https://github.com/ikazreal21/gamehub" target="_blank">GitHub</a> · <a href="/admin">Admin</a></div>
 </div>
 <script>
 async function load() {
