@@ -95,20 +95,34 @@ def create_server(body: CreateServerRequest, _=Depends(auth.require_auth)):
             # palworld image also reads ADMIN_PASSWORD; keep both in sync
             if body.game == "palworld":
                 env["ADMIN_PASSWORD"] = body.rcon_password
+        dockerfile = (body.dockerfile or "").strip()
+        image = body.image
+        if dockerfile and not image:
+            image = "__build__"  # placeholder: container created after custom build
         inst = docker_service.create_instance(
-            name=body.name, game=body.game, image=body.image,
+            name=body.name, game=body.game, image=image,
             ports=ports, env=env, extra_args=body.extra_args or "",
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Docker error: {e}")
-    # auto-start
-    try:
-        docker_service.start(inst.id)
-    except Exception:
-        pass
-    return inst.to_dict()
+    if dockerfile:
+        from . import builds as builds_svc
+        try:
+            builds_svc.save_dockerfile(inst.id, dockerfile)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        _start_build(inst.id, body.start)
+        return {**inst.to_dict(), "started": False, "build": "started"}
+    started = False
+    if body.start:
+        try:
+            docker_service.start(inst.id)
+            started = True
+        except Exception:
+            pass
+    return {**inst.to_dict(), "started": started}
 
 
 @app.get("/api/servers/{server_id}")
@@ -118,8 +132,16 @@ def get_server(server_id: str, _=Depends(auth.require_auth)):
         raise HTTPException(404, "Server not found")
     st = docker_service.container_state(server_id)
     stats = docker_service.stats(server_id)
+    tpl = get_template(inst.game)
     d = {**inst.to_dict(), "state": st, "stats": stats}
     d["share_url"] = f"/share/{server_id}"
+    from . import builds as builds_svc
+    d["has_dockerfile"] = bool(builds_svc.load_dockerfile(server_id).strip())
+    d["game_name"] = tpl.name if tpl else inst.game
+    d["config_files"] = [
+        {"index": i, "path": c.path_in_volume, "description": c.description}
+        for i, c in enumerate(tpl.config_files)
+    ] if tpl else []
     return d
 
 
@@ -257,6 +279,90 @@ def api_update_status(server_id: str, _=Depends(auth.require_auth)):
     if not job:
         return {"state": "idle", "log": []}
     return job
+
+
+_build_jobs: dict[str, dict] = {}
+
+
+def _run_build_job(server_id: str, start_after: bool):
+    from . import builds as builds_svc
+    job = _build_jobs[server_id]
+    try:
+        tag = builds_svc.build(server_id, job["log"])
+        job["log"].append(f"Image ready: {tag}")
+        if start_after:
+            job["log"].append("Starting server…")
+            docker_service.start(server_id)
+            job["log"].append("Done. state=" + docker_service.container_state(server_id))
+        else:
+            job["log"].append("Done. Press Start when ready.")
+        job["state"] = "done"
+    except Exception as e:
+        job["state"] = "error"
+        job["error"] = str(e)
+        job["log"].append(f"ERROR: {e}")
+
+
+def _start_build(server_id: str, start_after: bool):
+    cur = _build_jobs.get(server_id)
+    if cur and cur["state"] == "running":
+        raise HTTPException(409, "Build already in progress")
+    _build_jobs[server_id] = {"state": "running", "log": ["Build queued"], "error": ""}
+    threading.Thread(target=_run_build_job, args=(server_id, start_after), daemon=True).start()
+    return {"status": "started"}
+
+
+@app.post("/api/servers/{server_id}/build", status_code=202)
+def api_build(server_id: str, body: dict, _=Depends(auth.require_auth)):
+    """Build/rebuild custom image from stored (or just-provided) Dockerfile. Body: {"dockerfile"?, "start_after"?}"""
+    from . import builds as builds_svc
+    if not docker_service.get_instance(server_id):
+        raise HTTPException(404, "Server not found")
+    if body.get("dockerfile"):
+        try:
+            builds_svc.save_dockerfile(server_id, body["dockerfile"])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    elif not builds_svc.load_dockerfile(server_id).strip():
+        raise HTTPException(400, "No Dockerfile stored - paste one first")
+    return _start_build(server_id, bool(body.get("start_after", False)))
+
+
+@app.get("/api/servers/{server_id}/build/status")
+def api_build_status(server_id: str, _=Depends(auth.require_auth)):
+    job = _build_jobs.get(server_id)
+    if not job:
+        return {"state": "idle", "log": []}
+    return job
+
+
+@app.get("/api/servers/{server_id}/build/dockerfile")
+def api_get_dockerfile(server_id: str, _=Depends(auth.require_auth)):
+    from . import builds as builds_svc
+    if not docker_service.get_instance(server_id):
+        raise HTTPException(404, "Server not found")
+    return {"dockerfile": builds_svc.load_dockerfile(server_id)}
+
+
+@app.post("/api/servers/{server_id}/build/context", status_code=201)
+async def api_upload_context(server_id: str, file: UploadFile = File(...), _=Depends(auth.require_auth)):
+    """Upload a .zip build context (files your Dockerfile COPYs). Extracted next to the Dockerfile."""
+    from . import builds as builds_svc
+    if not docker_service.get_instance(server_id):
+        raise HTTPException(404, "Server not found")
+    name = (file.filename or "")
+    if not name.lower().endswith(".zip"):
+        raise HTTPException(400, "Upload a .zip file")
+    try:
+        data = await file.read()
+        if len(data) > 100 * 1024 * 1024:
+            raise HTTPException(400, "Context zip too large (100MB max)")
+        info = builds_svc.save_context_zip(server_id, data)
+        return {"status": "uploaded", "detail": info}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(400, f"Bad zip: {e}")
 
 
 @app.get("/api/servers/{server_id}/stats")

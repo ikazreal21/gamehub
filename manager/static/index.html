@@ -3,13 +3,17 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>GameHub — Game Servers</title>
+<title>GameHub — Self-Hosted Game Servers</title>
+<meta name="description" content="GameHub: self-hosted control panel for Palworld, Minecraft, Valheim, Project Zomboid and any Docker game server." />
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=2" />
 <link rel="stylesheet" href="/static/styles.css?v=2" />
 <style>
-.hero{max-width:900px;margin:32px auto 12px;padding:0 16px;text-align:center}
-.hero h1{letter-spacing:3px;text-transform:uppercase}
-.srv-grid{max-width:900px;margin:0 auto;padding:0 16px 40px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.page{max-width:960px;margin:0 auto;padding:0 16px 48px}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 0}
+.hero{text-align:center;margin:18px 0}
+.hero h1{letter-spacing:3px;text-transform:uppercase;margin:0 0 6px}
+.hero .tag{font-weight:700}
+.srv-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
 @media(max-width:700px){.srv-grid{grid-template-columns:1fr}}
 .srv-card h2{margin:0 0 4px;letter-spacing:1px;text-transform:uppercase;font-size:1.1em}
 .addr-row{display:flex;gap:8px;margin:10px 0;align-items:stretch}
@@ -18,21 +22,65 @@
 .pill.on{background:#6b8e4e;color:#fff8e8}
 .pill.off{background:#b3402e;color:#fff8e8}
 .plist{list-style:square;padding-left:22px;margin:6px 0;font-size:.9em}
-.topbar{max-width:900px;margin:0 auto;padding:14px 16px 0;display:flex;justify-content:space-between;align-items:center}
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+@media(max-width:700px){.feat-grid{grid-template-columns:1fr}}
+.feat{background:#fff8e8;border:3px solid #120d08;border-radius:6px;padding:10px;box-shadow:4px 4px 0 #000}
+.feat b{display:block;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.feat span{font-size:.85em;color:#6f5f45}
+.section{margin-top:18px}
+.section h2{letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;font-size:1.1em}
+.section ol,.section ul{margin:8px 0;padding-left:22px}
+.section li{margin:4px 0}
+pre.snippet{background:#0e0c06;color:#9ed07e;border:3px solid #120d08;border-radius:6px;padding:10px;overflow:auto;font-size:.8em;box-shadow:4px 4px 0 #000}
+.footer{text-align:center;margin-top:26px;font-size:.8em}
 </style>
 </head>
 <body>
-<div class="topbar">
-  <span class="muted small">🎮 GAMEHUB</span>
-  <a href="/admin"><button class="mini">Admin login</button></a>
-</div>
-<div class="hero">
-  <div class="card">
-    <h1>🎮 Game Servers</h1>
-    <p class="muted">Live status, join addresses and players. Auto-refreshes every 15s.</p>
+<div class="page">
+  <div class="topbar">
+    <span class="muted small">🎮 GAMEHUB</span>
+    <a href="/admin"><button class="mini">Admin login</button></a>
   </div>
+
+  <div class="hero card">
+    <h1>🎮 GameHub</h1>
+    <p class="tag">Self-hosted game server control panel</p>
+    <p class="muted small">Palworld · Minecraft · Valheim · Project Zomboid · any Docker game — start, monitor, configure and share from one page. Live status below, auto-refreshes every 15s.</p>
+  </div>
+
+  <div class="section"><h2>▶ Live servers</h2></div>
+  <div class="srv-grid" id="grid"><div class="card"><p class="muted">Loading servers…</p></div></div>
+
+  <div class="section card">
+    <h2>★ What you get here</h2>
+    <div class="feat-grid">
+      <div class="feat"><b>● Live status</b><span>Online/offline, CPU, RAM and player counts straight from the host.</span></div>
+      <div class="feat"><b>▶ One-click join</b><span>Click a join address to copy it, paste it in-game. Works behind CGNAT via playit tunnels.</span></div>
+      <div class="feat"><b>👥 Who's online</b><span>Player names update automatically — see who's in before you launch the game.</span></div>
+      <div class="feat"><b>🔗 Share pages</b><span>Every server has its own status page. Send the Details link to friends.</span></div>
+    </div>
+  </div>
+
+  <div class="section card">
+    <h2>❓ How to join a server</h2>
+    <ol>
+      <li>Find the server above and click its <b>join address</b> to copy it.</li>
+      <li>Open the game → multiplayer → join by IP / address → paste.</li>
+      <li>If it loads long on first join, that's normal (world sync) — Palworld first joins can take several minutes.</li>
+    </ol>
+  </div>
+
+  <div class="section card">
+    <h2>🕹 About this project</h2>
+    <p class="small">GameHub is an open-source (MIT) panel: a <b>Python FastAPI</b> backend driving game servers as <b>Docker</b> containers, with a no-build web UI. One <b>/admin</b> login controls everything — live console + RCON, player kick/ban, config editors, mods, backups, updates with progress, metrics — while this homepage and per-server <b>/share</b> pages stay public for players.</p>
+    <p class="small">Game templates make new titles easy: Palworld, Minecraft Java, Valheim and Project Zomboid ship built-in, and any Docker image can be added as Generic. Palworld server mods note: UE4SS script mods are Windows-server-only; Linux servers run .pak/config mods.</p>
+    <pre class="snippet">git clone &lt;repo&gt; /opt/gamehub
+cd /opt/gamehub &amp;&amp; chmod +x setup-server.sh
+sudo ./setup-server.sh --admin-pass 'strong-password' --with-playit --yes</pre>
+  </div>
+
+  <div class="footer muted">GameHub · MIT © Zaki Soriano · <a href="/admin">Admin</a></div>
 </div>
-<div class="srv-grid" id="grid"><div class="card"><p class="muted">Loading servers…</p></div></div>
 <script>
 async function load() {
   const grid = document.getElementById("grid");
@@ -40,7 +88,7 @@ async function load() {
     const r = await fetch("/public/servers");
     if (!r.ok) throw new Error("status " + r.status);
     const servers = await r.json();
-    if (!servers.length) { grid.innerHTML = "<div class='card'><p class='muted'>No servers yet.</p></div>"; return; }
+    if (!servers.length) { grid.innerHTML = "<div class='card'><p class='muted'>No servers yet — check back soon.</p></div>"; return; }
     grid.innerHTML = "";
     servers.forEach(s => {
       const d = document.createElement("div");

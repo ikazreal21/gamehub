@@ -61,7 +61,7 @@ def create_instance(name: str, game: str, image: str | None, ports: list[dict] |
         raise ValueError(f"Unknown game template: {game}")
     final_image = image or tpl.image
     if not final_image:
-        raise ValueError("Docker image is required (no default for generic template)")
+        raise ValueError("Docker image is required (no default for generic template - paste one or upload a Dockerfile)")
     final_ports = ports if ports is not None else [dict(p) for p in tpl.ports]
     merged_env = dict(tpl.env_defaults)
     merged_env.update(env or {})
@@ -75,7 +75,20 @@ def create_instance(name: str, game: str, image: str | None, ports: list[dict] |
     )
     _instances[cid] = inst
     _save()
-    # create container now (don't auto-start? we DO start for UX)
+    # create container now (skip when image is a placeholder pending a custom build)
+    if final_image != "__build__":
+        ensure_container(inst)
+    return inst
+
+
+def set_image(server_id: str, image: str):
+    """Point an instance at a (newly built) image and create its container."""
+    inst = _instances.get(server_id)
+    if inst is None:
+        raise KeyError("Server not found")
+    inst.image = image
+    _instances[server_id] = inst
+    _save()
     ensure_container(inst)
     return inst
 

@@ -28,6 +28,8 @@ class CreateServerRequest(BaseModel):
     image: Optional[str] = None  # override (generic / custom)
     rcon_password: Optional[str] = None
     extra_args: Optional[str] = None
+    start: bool = True  # False = create container only, don't start it
+    dockerfile: Optional[str] = None  # paste a Dockerfile -> built server-side, tagged per-server
 
 
 class UpdateEnvRequest(BaseModel):

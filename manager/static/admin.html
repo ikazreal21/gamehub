@@ -87,6 +87,7 @@
         <pre id="players-raw" class="muted small"></pre>
       </section>
       <section id="tab-config" class="tab hidden">
+        <div class="cmdrow"><label class="small" style="white-space:nowrap">File:</label><select id="config-file"></select></div>
         <p class="muted small" id="config-path"></p>
         <textarea id="config-editor" rows="22" spellcheck="false"></textarea>
         <div class="btnrow"><button id="config-load" >Reload</button><button id="config-save" class="primary">Save config</button></div>
@@ -101,6 +102,13 @@
         <h3>Public join address (from playit)</h3>
         <div class="cmdrow"><input id="public-addr" placeholder="e.g. xxx.asia.playit.gg:12345" /><button id="public-save" class="primary">Save</button></div>
         <p class="muted small">Share link: <a id="share-link" href="#" target="_blank">—</a> <button id="share-copy" class="mini">Copy</button></p>
+        <h3>Custom image build</h3>
+        <div id="build-box">
+          <p class="muted small" id="build-state">No custom Dockerfile stored.</p>
+          <textarea id="build-dockerfile" rows="8" spellcheck="false" placeholder="Paste Dockerfile here…"></textarea>
+          <div class="btnrow"><button id="build-run" class="primary">Build image</button><button id="build-run-start">Build + Start</button></div>
+          <pre id="build-log" class="muted small" style="max-height:180px;overflow:auto"></pre>
+        </div>
         <h3>Environment</h3>
         <textarea id="env-editor" rows="12" spellcheck="false"></textarea>
         <div class="btnrow"><button id="env-save" class="primary">Save env</button></div>
@@ -136,13 +144,16 @@
     <p id="ns-desc" class="muted small"></p>
     <label>Name (a-z,0-9,-,_) <input id="ns-name" placeholder="palworld-1" /></label>
     <label>Docker image (blank = template default) <input id="ns-image" placeholder="" /></label>
+    <label>— or paste a Dockerfile (built on your server, tagged for this game) — <textarea id="ns-dockerfile" rows="6" spellcheck="false" placeholder="FROM ubuntu:24.04&#10;RUN apt-get update && apt-get install -y ...&#10;CMD [...]"></textarea></label>
+    <label>Build context .zip (optional — files your Dockerfile COPYs) <input id="ns-context" type="file" accept=".zip" /></label>
     <label>RCON / Admin password <input id="ns-rcon" placeholder="strong password" /></label>
     <label>Extra env (JSON, optional) <textarea id="ns-env" rows="4" placeholder='{"SERVER_NAME":"My Server"}'></textarea></label>
-    <div class="btnrow"><button id="ns-cancel">Cancel</button><button id="ns-create" class="primary">Create + Start</button></div>
+    <div class="btnrow"><button id="ns-cancel">Cancel</button><button id="ns-create">Create</button><button id="ns-create-start" class="primary">Create + Start</button></div>
+    <pre id="ns-buildlog" class="muted small hidden" style="max-height:180px;overflow:auto"></pre>
     <p id="ns-err" class="error"></p>
   </div>
 </div>
 
-<script src="/static/app.js?v=6"></script>
+<script src="/static/app.js?v=8"></script>
 </body>
 </html>

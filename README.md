@@ -17,6 +17,7 @@ Stack: **Python FastAPI backend** + vanilla JS frontend, Docker Compose deploy. 
 - **⬆ Update**: pulls latest image + recreates (how SteamCMD games update) with live progress (`⏳ Updating…` → `✅ done`)
 - **Metrics**: CPU / RAM / players with legend + history chart
 - **Share page**: public read-only status page per server (`/share/{id}`) with join address, stats, player names — no login needed
+- **Custom images**: paste a Dockerfile (+ optional context zip) in the create modal or Env tab — built server-side with live logs, tagged per-server, with Rebuild
 - **Public homepage + IP-gated admin**: `/` shows all servers publicly; the management UI lives at `/admin`, optionally restricted to your IPs via `ADMIN_ALLOWED_IPS`
 - **Multi-game**: templates for Palworld, Minecraft Java, Valheim, Project Zomboid, Generic/Custom
 
@@ -101,14 +102,20 @@ Comma-separated IPs/CIDRs. Behind Cloudflare Tunnel it reads `CF-Connecting-IP`.
 
 ## Usage
 
-1. **+ New** → pick template (Palworld etc), name `palworld-1`, set RCON/admin password → Create + Start.
+1. **+ New** → pick template (name auto-suggests, e.g. `palworld-1`, editable), set RCON/admin password → **Create** (stopped) or **Create + Start**.
 2. **Console tab**: live logs + RCON command box. Quick buttons: `ShowPlayers`, `Save`, `Broadcast …`.
 3. **Players tab**: list via `ShowPlayers`, Kick/Ban buttons.
-4. **Config tab**: raw `PalWorldSettings.ini` editor. **Palworld⚙ tab**: form editor for `OptionSettings=(...)`.
+4. **Config tab**: file picker listing that template's editable files (e.g. `server.properties`, `PalWorldSettings.ini`; templates without any show a notice). **Palworld⚙ tab** only appears for Palworld servers.
 5. **Mods tab**: install from catalog / URL / file upload, then Restart to load.
 6. **Env tab**: public join address + share link, JSON env (server name, passwords, ports). Save → **Update** button recreates container to apply.
 7. **Backups tab**: one-click tar.gz of volume → `./backups/`. Restore: stop server, then `tar -xzf backups/<file> -C /var/lib/docker/volumes/<vol>/_data --strip-components=1`.
 8. **⬆ Update**: pulls latest image + recreates (how SteamCMD games update), with progress shown in the UI.
+
+## Custom images (Dockerfile builds)
+
+In **+ New** (or Env tab → Custom image build): paste a `Dockerfile` instead of an image name. GameHub builds it on your server as a background job with live logs and tags it `gamehub-custom-<name>:latest`. Optional: attach a context `.zip` for files your Dockerfile `COPY`s. Rebuild anytime from Env tab (then Restart). Compares to pulling: full control, slower first deploy, uses build disk.
+
+Raw `docker-compose.yml` upload is intentionally **not** supported: compose files can request `privileged`, host mounts and host networking, which would escape the manager's control. The image + ports + env fields plus Dockerfile builds cover the same ground safely.
 
 ## Mods
 
@@ -167,6 +174,7 @@ gamehub/
       palworld_config.py  # OptionSettings parser/serializer
       backups.py
       mods.py             # mods folder + URL installs
+      builds.py           # custom Dockerfile builds
       ip_gate.py          # IP allowlist for /admin + /api
       games/base.py       # GameTemplate + ServerInstance dataclasses
       games/templates.py  # ★ add games here ★
@@ -186,6 +194,7 @@ Auth: all `/api/*` except `POST /api/login` need `Authorization: Bearer <token>`
 - `GET/PUT /api/servers/{id}/env`, `PUT /api/servers/{id}/public-address`
 - `GET/PUT /api/servers/{id}/config`, `GET/PUT /api/servers/{id}/palworld-settings`
 - `GET /api/servers/{id}/mods`, `POST .../mods/install`, `POST .../mods/upload`, `DELETE .../mods/{name}`
+- `POST /api/servers/{id}/build {dockerfile?, start_after?}`, `GET .../build/status`, `GET .../build/dockerfile`, `POST .../build/context` (.zip)
 - `GET /api/backups`, `POST /api/servers/{id}/backup`, `DELETE /api/backups/{f}`, `GET /api/system`
 - `GET /public/servers`, `GET /public/servers/{id}` (no auth — status, join address, stats, player names only), `GET /share/{id}` page, `/` homepage
 

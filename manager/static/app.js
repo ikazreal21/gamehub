@@ -50,11 +50,20 @@ async function loadTemplates() {
   $("ns-template").innerHTML = templates.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
   updateNsDesc();
 }
-function updateNsDesc() {
+let nsSuggested = "";
+function updateNsDesc(fillName) {
   const t = templates.find(x => x.id === $("ns-template").value);
-  if (t) { $("ns-desc").textContent = t.description + " | image: " + (t.image || "(you supply)"); $("ns-image").placeholder = t.image || "e.g. nginx:latest"; }
+  if (!t) return;
+  $("ns-desc").textContent = t.description + " | image: " + (t.image || "(you supply)");
+  $("ns-image").placeholder = t.image || "e.g. nginx:latest";
+  // preset name suggestion from template (e.g. palworld-1); never clobber a custom name
+  if (fillName && ($("ns-name").value.trim() === "" || $("ns-name").value.trim() === nsSuggested)) {
+    nsSuggested = `${t.id}-1`;
+    $("ns-name").value = nsSuggested;
+  }
+  $("ns-name").placeholder = `${t.id}-1`;
 }
-$("ns-template").onchange = updateNsDesc;
+$("ns-template").onchange = () => updateNsDesc(true);
 
 async function loadServers() {
   servers = await api.req("/api/servers");
@@ -108,9 +117,18 @@ async function selectServer(id) {
   document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
   $("tab-console").classList.remove("hidden");
   $("logs-live").checked = true;
-  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfig(), loadEnv(), loadMods(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
+  updatePalworldVisibility();
+  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfigList().then(loadConfig), loadEnv(), loadBuildBox(), loadMods(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
   openWs();
   startLogPoll();
+}
+
+// Palworld⚙ tab only makes sense for Palworld servers - hide it otherwise.
+function updatePalworldVisibility() {
+  const srv = servers.find(s => s.id === current);
+  const isPal = !!srv && srv.game === "palworld";
+  document.querySelectorAll('.tabs button[data-tab="palworld"]').forEach(b => b.style.display = isPal ? "" : "none");
+  if (!isPal) $("tab-palworld").classList.add("hidden");
 }
 
 let lastState = "";
@@ -305,17 +323,43 @@ async function loadPlayers() {
 }
 $("players-refresh").onclick = loadPlayers;
 
-// config
+// config (per-template file list; some games like Valheim have none)
+let configFiles = [];
+async function loadConfigList() {
+  configFiles = [];
+  try {
+    const d = await api.req(`/api/servers/${current}`);
+    configFiles = d.config_files || [];
+  } catch {}
+  const sel = $("config-file"); sel.innerHTML = "";
+  configFiles.forEach(f => {
+    const o = document.createElement("option");
+    o.value = f.index; o.textContent = f.path;
+    sel.appendChild(o);
+  });
+  if (!configFiles.length) {
+    $("config-editor").value = "";
+    $("config-path").textContent = "No editable config files for this game template.";
+  }
+}
 async function loadConfig() {
   if (!current) return;
+  if (!configFiles.length) await loadConfigList();
+  if (!configFiles.length) return;
+  const idx = $("config-file").value || 0;
   try {
-    const j = await api.req(`/api/servers/${current}/config`);
-    $("config-editor").value = j.content || ""; $("config-path").textContent = "Path: " + j.path + (j.exists ? "" : " (not created yet — defaults shown)");
+    const j = await api.req(`/api/servers/${current}/config?file_idx=${idx}`);
+    $("config-editor").value = j.content || "";
+    const f = configFiles.find(x => String(x.index) === String(idx));
+    $("config-path").textContent = "Path: " + j.path + (j.exists ? "" : " (not created yet — defaults shown)") + (f?.description ? " — " + f.description : "");
   } catch (e) { $("config-editor").value = "ERROR: " + e.message; }
 }
+$("config-file").onchange = loadConfig;
 $("config-load").onclick = loadConfig;
 $("config-save").onclick = async () => {
-  await api.req(`/api/servers/${current}/config`, { method: "PUT", body: JSON.stringify({ content: $("config-editor").value }) });
+  if (!configFiles.length) return alert("No config file for this game.");
+  const idx = $("config-file").value || 0;
+  await api.req(`/api/servers/${current}/config?file_idx=${idx}`, { method: "PUT", body: JSON.stringify({ content: $("config-editor").value }) });
   alert("Saved. Restart server to apply.");
 };
 
@@ -366,6 +410,30 @@ $("env-save").onclick = async () => {
   await api.req(`/api/servers/${current}/env`, { method: "PUT", body: JSON.stringify({ env }) });
   alert("Saved. Use Update/Restart to apply.");
 };
+
+// custom image build box
+async function loadBuildBox() {
+  if (!current) return;
+  try {
+    const d = await api.req(`/api/servers/${current}`);
+    const j = await api.req(`/api/servers/${current}/build/dockerfile`);
+    $("build-dockerfile").value = j.dockerfile || "";
+    $("build-state").textContent = d.has_dockerfile
+      ? `Custom image: ${d.image} (Dockerfile stored — Rebuild to apply changes, then Restart)`
+      : "No custom Dockerfile stored. Pulled image: " + d.image;
+  } catch (e) { $("build-state").textContent = "ERROR: " + e.message; }
+}
+async function runBuild(startAfter) {
+  if (!current) return;
+  const df = $("build-dockerfile").value;
+  if (!df.trim()) return alert("Paste a Dockerfile first");
+  await api.req(`/api/servers/${current}/build`, { method: "POST", body: JSON.stringify({ dockerfile: df, start_after: startAfter }) });
+  const st = await pollBuild(current, $("build-log"));
+  alert(st.state === "done" ? "Image built." : "Build failed: " + (st.error || "unknown"));
+  loadServers(); refreshStats();
+}
+$("build-run").onclick = () => runBuild(false);
+$("build-run-start").onclick = () => runBuild(true);
 
 // mods
 async function loadMods() {
@@ -432,22 +500,58 @@ async function loadBackups() {
 $("backup-now").onclick = async () => { await api.req(`/api/servers/${current}/backup`, { method: "POST" }); loadBackups(); };
 $("backup-refresh").onclick = loadBackups;
 
-// new server modal
-$("add-server-btn").onclick = () => { $("modal").classList.remove("hidden"); $("ns-err").textContent = ""; };
+// new server modal (Create vs Create + Start)
+$("add-server-btn").onclick = () => {
+  $("modal").classList.remove("hidden"); $("ns-err").textContent = "";
+  updateNsDesc(true);
+};
 $("ns-cancel").onclick = () => $("modal").classList.add("hidden");
-$("ns-create").onclick = async () => {
+async function pollBuild(serverId, logEl, btns) {
+  // poll build job until done/error, streaming log tail into logEl
+  for (let i = 0; i < 200; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const st = await api.req(`/api/servers/${serverId}/build/status`);
+    if (logEl) { logEl.classList.remove("hidden"); logEl.textContent = (st.log || []).slice(-30).join("\n"); logEl.scrollTop = 1e9; }
+    if (st.state === "done" || st.state === "error") return st;
+  }
+  return { state: "error", error: "timed out waiting for build" };
+}
+async function doCreate(start) {
   $("ns-err").textContent = "";
+  const dockerfile = $("ns-dockerfile").value;
   try {
     let env = {};
     if ($("ns-env").value.trim()) env = JSON.parse($("ns-env").value);
-    await api.req("/api/servers", { method: "POST", body: JSON.stringify({
+    const j = await api.req("/api/servers", { method: "POST", body: JSON.stringify({
       name: $("ns-name").value.trim(), game: $("ns-template").value,
-      image: $("ns-image").value.trim() || null, rcon_password: $("ns-rcon").value || null, env,
+      image: $("ns-image").value.trim() || null, rcon_password: $("ns-rcon").value || null, env, start,
+      dockerfile: dockerfile.trim() || null,
     }) });
+    // optional build context zip (uploaded before the real build so COPY works)
+    const ctx = $("ns-context").files[0];
+    if (ctx && j.id) {
+      const fd = new FormData(); fd.append("file", ctx);
+      await fetch(`/api/servers/${j.id}/build/context`, { method: "POST", headers: { Authorization: "Bearer " + api.token }, body: fd });
+      // wait out the auto-started build (it may have missed the context), then rebuild properly
+      await pollBuild(j.id, $("ns-buildlog"));
+      try {
+        await api.req(`/api/servers/${j.id}/build`, { method: "POST", body: JSON.stringify({ start_after: start }) });
+      } catch (e) { if (!String(e.message).includes("already in progress")) throw e; }
+    }
+    if (j.build === "started") {
+      // custom Dockerfile: build first, then land on the server
+      const st = await pollBuild(j.id, $("ns-buildlog"));
+      if (st.state !== "done") { $("ns-err").textContent = "Build failed: " + (st.error || "unknown"); return; }
+    }
     $("modal").classList.add("hidden");
-    $("ns-name").value = ""; $("ns-rcon").value = "";
+    nsSuggested = "";
+    $("ns-name").value = ""; $("ns-rcon").value = ""; $("ns-env").value = ""; $("ns-dockerfile").value = "";
+    $("ns-context").value = ""; $("ns-buildlog").classList.add("hidden"); $("ns-buildlog").textContent = "";
     await loadServers();
+    if (j.id) selectServer(j.id);
   } catch (e) { $("ns-err").textContent = e.message; }
-};
+}
+$("ns-create").onclick = () => doCreate(false);
+$("ns-create-start").onclick = () => doCreate(true);
 
 if (api.token) boot();
