@@ -117,18 +117,10 @@ async function selectServer(id) {
   document.querySelectorAll(".tab").forEach(t => t.classList.add("hidden"));
   $("tab-console").classList.remove("hidden");
   $("logs-live").checked = true;
-  updatePalworldVisibility();
-  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfigList().then(loadConfig), loadEnv(), loadBuildBox(), loadMods(), loadBackups(), loadPalSettings(), loadQuickCmds()]);
+  await Promise.all([refreshStats(), loadLogs(), loadPlayers(), loadConfigList().then(loadConfig), loadEnv(), loadBuildBox(), loadMods(), loadBackups(), loadSettings(), loadQuickCmds()]);
   openWs();
   startLogPoll();
 }
-
-// Palworld⚙ tab only makes sense for Palworld servers - hide it otherwise.
-function updatePalworldVisibility() {
-  const srv = servers.find(s => s.id === current);
-  const isPal = !!srv && srv.game === "palworld";
-  document.querySelectorAll('.tabs button[data-tab="palworld"]').forEach(b => b.style.display = isPal ? "" : "none");
-  if (!isPal) $("tab-palworld").classList.add("hidden");
 }
 
 let lastState = "";
@@ -363,25 +355,66 @@ $("config-save").onclick = async () => {
   alert("Saved. Restart server to apply.");
 };
 
-// palworld form
-async function loadPalSettings() {
+// settings form (per-game friendly form alongside raw Config tab)
+const SETTINGS_BLURBS = {
+  palworld: "Parsed OptionSettings from PalWorldSettings.ini — same file as the Config tab, friendlier.",
+  properties: "server.properties as a form — same file as the Config tab, friendlier.",
+  ini: "Server .ini as a form — same file as the Config tab, friendlier.",
+  env: "These live in the server environment (mirrored in the Env tab). Restart to apply.",
+};
+async function loadSettings() {
   if (!current) return;
-  const srv = servers.find(s => s.id === current);
-  if (!srv || srv.game !== "palworld") { $("pal-form").innerHTML = "<p class='muted'>Select a Palworld server.</p>"; return; }
-  const j = await api.req(`/api/servers/${current}/palworld-settings`);
-  const f = $("pal-form"); f.innerHTML = "";
-  Object.entries(j.settings).forEach(([k, v]) => {
-    const l = document.createElement("label"); l.textContent = k;
-    const i = document.createElement("input"); i.value = v; i.dataset.key = k;
-    l.appendChild(i); f.appendChild(l);
-  });
+  const f = $("settings-form"); f.innerHTML = "<p class='muted'>Loading…</p>";
+  try {
+    const j = await api.req(`/api/servers/${current}/settings`);
+    $("settings-desc").textContent = `${j.game_name}: ${SETTINGS_BLURBS[j.source] || ""}`.trim()
+      + (j.path ? ` (File: ${j.path}${j.exists ? "" : " — not created yet, defaults shown)"}` : "");
+    $("settings-note").textContent = j.note || "Restart server to apply.";
+    f.innerHTML = "";
+    if (!j.fields.length) { f.innerHTML = "<p class='muted'>No form settings for this game — use Config / Env tabs.</p>"; return; }
+    j.fields.forEach(field => {
+      const l = document.createElement("label");
+      l.textContent = field.label + (field.description ? ` — ${field.description}` : "");
+      const val = (j.values[field.key] ?? field.default ?? "");
+      let input;
+      if (field.type === "boolean") {
+        input = document.createElement("select");
+        ["true", "false"].forEach(o => {
+          const op = document.createElement("option");
+          op.value = o; op.textContent = o;
+          if (String(val).toLowerCase() === o) op.selected = true;
+          input.appendChild(op);
+        });
+      } else if (field.type === "select" && field.options?.length) {
+        input = document.createElement("select");
+        field.options.forEach(o => {
+          const op = document.createElement("option");
+          op.value = o; op.textContent = o;
+          if (String(val) === String(o)) op.selected = true;
+          input.appendChild(op);
+        });
+        if (!field.options.map(String).includes(String(val))) {
+          const op = document.createElement("option");
+          op.value = val; op.textContent = `${val} (current)`; op.selected = true;
+          input.appendChild(op);
+        }
+      } else {
+        input = document.createElement("input");
+        input.value = val ?? "";
+        if (field.type === "password") input.type = "password";
+        else if (field.type === "integer" || field.type === "number") input.type = "number";
+      }
+      input.dataset.key = field.key;
+      l.appendChild(input); f.appendChild(l);
+    });
+  } catch (e) { f.innerHTML = ""; $("settings-desc").textContent = "ERROR: " + e.message; }
 }
-$("pal-load").onclick = loadPalSettings;
-$("pal-save").onclick = async () => {
-  const settings = {};
-  $("pal-form").querySelectorAll("input").forEach(i => settings[i.dataset.key] = i.value);
-  await api.req(`/api/servers/${current}/palworld-settings`, { method: "PUT", body: JSON.stringify({ settings }) });
-  alert("Saved. Restart server to apply."); loadConfig();
+$("settings-load").onclick = loadSettings;
+$("settings-save").onclick = async () => {
+  const values = {};
+  $("settings-form").querySelectorAll("input,select").forEach(i => values[i.dataset.key] = i.value);
+  const j = await api.req(`/api/servers/${current}/settings`, { method: "PUT", body: JSON.stringify({ values }) });
+  alert("Saved. " + (j.note || "Restart server to apply.")); loadConfig(); loadEnv();
 };
 
 // env + public address / share link

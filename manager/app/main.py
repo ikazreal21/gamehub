@@ -513,21 +513,50 @@ def api_put_config(server_id: str, body: dict, file_idx: int = 0, _=Depends(auth
 
 @app.get("/api/servers/{server_id}/palworld-settings")
 def api_get_pal_settings(server_id: str, _=Depends(auth.require_auth)):
-    p = _resolve_config_path(server_id, 0)
-    content = p.read_text(errors="replace") if p and p.exists() else pal_cfg.DEFAULT_PALWORLD_SETTINGS
-    return {"settings": pal_cfg.parse_option_settings(content)}
+    """Legacy Palworld-only endpoint (kept for compat) - prefer GET .../settings."""
+    from . import game_settings as gs
+    try:
+        s = gs.get_settings(server_id)
+        if s["game"] != "palworld":
+            raise HTTPException(400, "Not a Palworld server - use GET .../settings")
+        return {"settings": s["values"]}
+    except KeyError:
+        raise HTTPException(404, "Server not found")
 
 
 @app.put("/api/servers/{server_id}/palworld-settings")
 def api_put_pal_settings(server_id: str, body: dict, _=Depends(auth.require_auth)):
-    settings = body.get("settings", {})
-    content = pal_cfg.dump_option_settings({k: str(v) for k, v in settings.items()})
-    p = _resolve_config_path(server_id, 0)
-    if p is None:
-        raise HTTPException(400, "No palworld config path")
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content)
-    return {"status": "saved"}
+    """Legacy Palworld-only endpoint (kept for compat) - prefer PUT .../settings."""
+    from . import game_settings as gs
+    try:
+        return gs.save_settings(server_id, body.get("settings", {}))
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/servers/{server_id}/settings")
+def api_get_settings(server_id: str, _=Depends(auth.require_auth)):
+    """Generic per-game Settings form (all templates) - sits alongside the raw Config tab."""
+    from . import game_settings as gs
+    try:
+        return gs.get_settings(server_id)
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.put("/api/servers/{server_id}/settings")
+def api_put_settings(server_id: str, body: dict, _=Depends(auth.require_auth)):
+    from . import game_settings as gs
+    try:
+        return gs.save_settings(server_id, body.get("values", body.get("settings", {})))
+    except KeyError:
+        raise HTTPException(404, "Server not found")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/backups")

@@ -105,7 +105,7 @@ Comma-separated IPs/CIDRs. Behind Cloudflare Tunnel it reads `CF-Connecting-IP`.
 1. **+ New** → pick template (name auto-suggests, e.g. `palworld-1`, editable), set RCON/admin password → **Create** (stopped) or **Create + Start**.
 2. **Console tab**: live logs + RCON command box. Quick buttons: `ShowPlayers`, `Save`, `Broadcast …`.
 3. **Players tab**: list via `ShowPlayers`, Kick/Ban buttons.
-4. **Config tab**: file picker listing that template's editable files (e.g. `server.properties`, `PalWorldSettings.ini`; templates without any show a notice). **Palworld⚙ tab** only appears for Palworld servers.
+4. **Config tab**: raw file editor with a file picker per template (templates without files show a notice). **Settings tab**: friendly form for every game — Palworld `OptionSettings` (62 fields), Minecraft `server.properties` (20 fields), Zomboid server `.ini`, Valheim/Generic env vars. Same data as Config/Env, friendlier.
 5. **Mods tab**: install from catalog / URL / file upload, then Restart to load.
 6. **Env tab**: public join address + share link, JSON env (server name, passwords, ports). Save → **Update** button recreates container to apply.
 7. **Backups tab**: one-click tar.gz of volume → `./backups/`. Restore: stop server, then `tar -xzf backups/<file> -C /var/lib/docker/volumes/<vol>/_data --strip-components=1`.
@@ -172,6 +172,7 @@ gamehub/
       rcon.py             # Source RCON client
       rcon_helpers.py     # per-server RCON target + player parsing
       palworld_config.py  # OptionSettings parser/serializer
+      game_settings.py    # per-game Settings forms (all templates)
       backups.py
       mods.py             # mods folder + URL installs
       builds.py           # custom Dockerfile builds
@@ -192,7 +193,7 @@ Auth: all `/api/*` except `POST /api/login` need `Authorization: Bearer <token>`
 - `GET /api/servers/{id}/stats`, `GET /api/servers/{id}/logs`, `WS /api/servers/{id}/logs/ws?token=`
 - `POST /api/servers/{id}/rcon {command}`, `GET /api/servers/{id}/players`
 - `GET/PUT /api/servers/{id}/env`, `PUT /api/servers/{id}/public-address`
-- `GET/PUT /api/servers/{id}/config`, `GET/PUT /api/servers/{id}/palworld-settings`
+- `GET/PUT /api/servers/{id}/config`, `GET/PUT /api/servers/{id}/settings` (all games), `GET/PUT /api/servers/{id}/palworld-settings` (legacy)
 - `GET /api/servers/{id}/mods`, `POST .../mods/install`, `POST .../mods/upload`, `DELETE .../mods/{name}`
 - `POST /api/servers/{id}/build {dockerfile?, start_after?}`, `GET .../build/status`, `GET .../build/dockerfile`, `POST .../build/context` (.zip)
 - `GET /api/backups`, `POST /api/servers/{id}/backup`, `DELETE /api/backups/{f}`, `GET /api/system`

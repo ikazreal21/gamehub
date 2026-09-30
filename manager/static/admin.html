@@ -65,7 +65,7 @@
         <button data-tab="console" class="active">Console</button>
         <button data-tab="players">Players</button>
         <button data-tab="config">Config</button>
-        <button data-tab="palworld">Palworld⚙</button>
+        <button data-tab="settings">Settings</button>
         <button data-tab="env">Env / Ports</button>
         <button data-tab="mods">Mods</button>
         <button data-tab="backups">Backups</button>
@@ -93,10 +93,11 @@
         <div class="btnrow"><button id="config-load" >Reload</button><button id="config-save" class="primary">Save config</button></div>
         <p class="muted small">Restart server after changing configs.</p>
       </section>
-      <section id="tab-palworld" class="tab hidden">
-        <p class="muted small">Parsed <code>OptionSettings</code> from PalWorldSettings.ini. Only visible for Palworld servers.</p>
-        <div id="pal-form"></div>
-        <div class="btnrow"><button id="pal-load">Reload</button><button id="pal-save" class="primary">Save Palworld settings</button></div>
+      <section id="tab-settings" class="tab hidden">
+        <p class="muted small" id="settings-desc">Friendly form for this game's settings. Raw file stays under the Config tab.</p>
+        <div id="settings-form"></div>
+        <div class="btnrow"><button id="settings-load">Reload</button><button id="settings-save" class="primary">Save settings</button></div>
+        <p class="muted small" id="settings-note"></p>
       </section>
       <section id="tab-env" class="tab hidden">
         <h3>Public join address (from playit)</h3>
@@ -154,6 +155,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=8"></script>
+<script src="/static/app.js?v=9"></script>
 </body>
 </html>
