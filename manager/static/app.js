@@ -75,7 +75,7 @@ async function loadServers() {
   servers.forEach(s => {
     const b = document.createElement("button");
     b.className = "srv" + (current === s.id ? " active" : "");
-    b.innerHTML = `<b>${s.name}</b><span class="muted small">${s.game_name}</span><br><span class="st ${s.state}">${s.state}</span>`;
+    b.innerHTML = `<b>${s.name}${s.hidden ? " 🚫" : ""}</b><span class="muted small">${s.game_name}${s.hidden ? " · hidden" : ""}</span><br><span class="st ${s.state}">${s.state}</span>`;
     b.onclick = () => selectServer(s.id);
     box.appendChild(b);
   });
@@ -429,10 +429,18 @@ async function loadEnv() {
   try {
     const d = await api.req(`/api/servers/${current}`);
     $("public-addr").value = d.public_address || "";
+    $("show-homepage").checked = !d.hidden;
     const url = `${location.origin}/share/${current}`;
     const a = $("share-link"); a.href = url; a.textContent = url;
   } catch {}
 }
+$("show-homepage").onchange = async () => {
+  if (!current) return;
+  const j = await api.req(`/api/servers/${current}/visibility`, { method: "PUT", body: JSON.stringify({ hidden: !$("show-homepage").checked }) });
+  const srv = servers.find(x => x.id === current);
+  if (srv) srv.hidden = j.hidden;
+  loadServers();
+};
 $("public-save").onclick = async () => {
   if (!current) return;
   const j = await api.req(`/api/servers/${current}/public-address`, { method: "PUT", body: JSON.stringify({ public_address: $("public-addr").value.trim() }) });

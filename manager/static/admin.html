@@ -103,6 +103,8 @@
         <h3>Public join address (from playit)</h3>
         <div class="cmdrow"><input id="public-addr" placeholder="e.g. xxx.asia.playit.gg:12345" /><button id="public-save" class="primary">Save</button></div>
         <p class="muted small">Share link: <a id="share-link" href="#" target="_blank">—</a> <button id="share-copy" class="mini">Copy</button></p>
+        <label class="small live-toggle"><input type="checkbox" id="show-homepage" checked /> <span>Show on homepage</span></label>
+        <p class="muted small">Untick to hide from the public homepage (its share link keeps working).</p>
         <h3>Custom image build</h3>
         <div id="build-box">
           <p class="muted small" id="build-state">No custom Dockerfile stored.</p>
@@ -155,6 +157,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=10"></script>
+<script src="/static/app.js?v=11"></script>
 </body>
 </html>

@@ -58,6 +58,7 @@ class ServerInstance:
     extra_args: str = ""
     created_at: str = ""
     public_address: str = ""  # e.g. playit address xxx.asia.playit.gg:1234
+    hidden: bool = False  # True = hide from public homepage (share link still works)
 
     def container_name(self) -> str:
         return self.id
@@ -67,7 +68,7 @@ class ServerInstance:
             "id": self.id, "name": self.name, "game": self.game,
             "image": self.image, "ports": self.ports, "env": self.env,
             "extra_args": self.extra_args, "created_at": self.created_at,
-            "public_address": self.public_address,
+            "public_address": self.public_address, "hidden": self.hidden,
         }
 
     @staticmethod
@@ -76,5 +77,5 @@ class ServerInstance:
             id=d["id"], name=d.get("name", d["id"]), game=d["game"],
             image=d["image"], ports=d.get("ports", []), env=d.get("env", {}),
             extra_args=d.get("extra_args", ""), created_at=d.get("created_at", ""),
-            public_address=d.get("public_address", ""),
+            public_address=d.get("public_address", ""), hidden=d.get("hidden", False),
         )

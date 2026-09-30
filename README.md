@@ -18,7 +18,7 @@ Stack: **Python FastAPI backend** + vanilla JS frontend, Docker Compose deploy. 
 - **Metrics**: CPU / RAM / players with legend + history chart
 - **Share page**: public read-only status page per server (`/share/{id}`) with join address, stats, player names — no login needed
 - **Custom images**: paste a Dockerfile (+ optional context zip) in the create modal or Env tab — built server-side with live logs, tagged per-server, with Rebuild
-- **Public homepage + IP-gated admin**: `/` shows all servers publicly; the management UI lives at `/admin`, optionally restricted to your IPs via `ADMIN_ALLOWED_IPS`
+- **Public homepage + IP-gated admin**: `/` shows servers publicly (per-server hide toggle; hidden ones stay reachable via share link); the management UI lives at `/admin`, optionally restricted to your IPs via `ADMIN_ALLOWED_IPS`
 - **Multi-game**: templates for Palworld, Minecraft Java, Valheim, Project Zomboid, Generic/Custom
 
 ## Screenshots
@@ -197,7 +197,8 @@ Auth: all `/api/*` except `POST /api/login` need `Authorization: Bearer <token>`
 - `GET /api/servers/{id}/mods`, `POST .../mods/install`, `POST .../mods/upload`, `DELETE .../mods/{name}`
 - `POST /api/servers/{id}/build {dockerfile?, start_after?}`, `GET .../build/status`, `GET .../build/dockerfile`, `POST .../build/context` (.zip)
 - `GET /api/backups`, `POST /api/servers/{id}/backup`, `DELETE /api/backups/{f}`, `GET /api/system`
-- `GET /public/servers`, `GET /public/servers/{id}` (no auth — status, join address, stats, player names only), `GET /share/{id}` page, `/` homepage
+- `GET /public/servers` (excludes hidden), `GET /public/servers/{id}` (no auth — status, join address, stats, player names only), `GET /share/{id}` page, `/` homepage
+- `PUT /api/servers/{id}/visibility {hidden}` (homepage show/hide)
 
 ## Security checklist (do this before going public)
 

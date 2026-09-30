@@ -78,7 +78,7 @@ def list_servers(_=Depends(auth.require_auth)):
             "image": inst.image, "state": st,
             "ports": inst.ports, "env_keys": sorted(inst.env.keys()),
             "created_at": inst.created_at,
-            "public_address": inst.public_address,
+            "public_address": inst.public_address, "hidden": inst.hidden,
         })
     return result
 
@@ -194,8 +194,20 @@ def _public_status(server_id: str) -> dict:
 
 @app.get("/public/servers")
 def public_server_list():
-    """Public homepage feed - NO auth. One entry per server (names + status + addresses)."""
-    return [_public_status(s.id) for s in docker_service.list_instances()]
+    """Public homepage feed - NO auth. Hidden servers are excluded (their share links still work)."""
+    return [_public_status(s.id) for s in docker_service.list_instances() if not s.hidden]
+
+
+@app.put("/api/servers/{server_id}/visibility")
+def api_set_visibility(server_id: str, body: dict, _=Depends(auth.require_auth)):
+    """Show/hide a server on the public homepage. Body: {"hidden": bool}"""
+    inst = docker_service.get_instance(server_id)
+    if not inst:
+        raise HTTPException(404, "Server not found")
+    inst.hidden = bool(body.get("hidden", False))
+    docker_service._instances[server_id] = inst
+    docker_service._save()
+    return {"hidden": inst.hidden}
 
 
 @app.get("/public/servers/{server_id}")

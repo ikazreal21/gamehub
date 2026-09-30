@@ -32,6 +32,11 @@
 .section ol,.section ul{margin:8px 0;padding-left:22px}
 .section li{margin:4px 0}
 pre.snippet{background:#0e0c06;color:#9ed07e;border:3px solid #120d08;border-radius:6px;padding:10px;overflow:auto;font-size:.8em;box-shadow:4px 4px 0 #000}
+.how-steps{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-top:10px}
+@media(max-width:700px){.how-steps{grid-template-columns:1fr 1fr}}
+.step{background:#fff8e8;border:3px solid #120d08;border-radius:6px;padding:10px;box-shadow:4px 4px 0 #000;text-align:center}
+.step b{display:block;font-size:1.4em;margin-bottom:4px}
+.step span{font-size:.82em;color:#6f5f45}
 .footer{text-align:center;margin-top:26px;font-size:.8em}
 </style>
 </head>
@@ -45,7 +50,7 @@ pre.snippet{background:#0e0c06;color:#9ed07e;border:3px solid #120d08;border-rad
   <div class="hero card">
     <h1>🎮 GameHub</h1>
     <p class="tag">Self-hosted game server control panel</p>
-    <p class="muted small">Palworld · Minecraft · Valheim · Project Zomboid · any Docker game — start, monitor, configure and share from one page. Live status below, auto-refreshes every 15s.</p>
+    <p class="muted small">Palworld · Minecraft · Valheim · Project Zomboid · any Docker game — live status below, auto-refreshes every 15s.</p>
   </div>
 
   <div class="section"><h2>▶ Live servers</h2></div>
@@ -66,17 +71,28 @@ pre.snippet{background:#0e0c06;color:#9ed07e;border:3px solid #120d08;border-rad
     <ol>
       <li>Find the server above and click its <b>join address</b> to copy it.</li>
       <li>Open the game → multiplayer → join by IP / address → paste.</li>
-      <li>If it loads long on first join, that's normal (world sync) — Palworld first joins can take several minutes.</li>
+      <li>First joins can load long (world sync) — Palworld first joins take several minutes. That's normal.</li>
     </ol>
   </div>
 
   <div class="section card">
-    <h2>🕹 About this project</h2>
-    <p class="small">GameHub is an open-source (MIT) panel: a <b>Python FastAPI</b> backend driving game servers as <b>Docker</b> containers, with a no-build web UI. One <b>/admin</b> login controls everything — live console + RCON, player kick/ban, config editors, mods, backups, updates with progress, metrics — while this homepage and per-server <b>/share</b> pages stay public for players.</p>
-    <p class="small">Game templates make new titles easy: Palworld, Minecraft Java, Valheim and Project Zomboid ship built-in, and any Docker image can be added as Generic. Palworld server mods note: UE4SS script mods are Windows-server-only; Linux servers run .pak/config mods.</p>
-    <pre class="snippet">git clone &lt;repo&gt; /opt/gamehub
+    <h2>⚙ How it works</h2>
+    <div class="how-steps">
+      <div class="step"><b>🖥</b><span><b>1. Host</b><br>One Linux box runs everything (this page + the games).</span></div>
+      <div class="step"><b>📦</b><span><b>2. Docker</b><br>Each game runs isolated in its own container.</span></div>
+      <div class="step"><b>🎛</b><span><b>3. Manager</b><br>GameHub starts, monitors, updates and backs them up.</span></div>
+      <div class="step"><b>🌐</b><span><b>4. Tunnel</b><br>playit exposes game ports — no router setup, works behind CGNAT.</span></div>
+    </div>
+    <p class="small" style="margin-top:10px">Admins get a private <b>/admin</b> panel: live console + RCON, player kick/ban, config &amp; settings editors, mods, backups, one-click updates with progress, and metrics. Players only ever see this page and per-server <b>/share</b> pages — no login needed.</p>
+  </div>
+
+  <div class="section card">
+    <h2>💾 Open source — run your own</h2>
+    <p class="small"><b>GameHub is free and open-source (MIT).</b> Put it on any Ubuntu server with Docker and host your own games the same way: one command installs the manager, and the playit agent gets you past CGNAT without touching your router. Fork it, add game templates, self-host forever — no accounts, no fees, your data stays on your box.</p>
+    <pre class="snippet">git clone https://github.com/your-username/gamehub.git /opt/gamehub
 cd /opt/gamehub &amp;&amp; chmod +x setup-server.sh
 sudo ./setup-server.sh --admin-pass 'strong-password' --with-playit --yes</pre>
+    <p class="muted small">Stack: Python FastAPI + vanilla JS, Docker Compose deploy. Templates for Palworld, Minecraft Java, Valheim, Project Zomboid + Generic/Custom — new games are one block in <code>games/templates.py</code>.</p>
   </div>
 
   <div class="footer muted">GameHub · MIT © Zaki Soriano · <a href="/admin">Admin</a></div>
