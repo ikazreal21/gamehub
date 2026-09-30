@@ -125,7 +125,6 @@ async function selectServer(id) {
   openWs();
   startLogPoll();
 }
-}
 
 let lastState = "";
 async function reliveLogs(reason) {
